@@ -24,8 +24,9 @@ Sivu toimii myös GitHub Pagesissa (repo root). three.js ladataan jsDelivr-CDN:s
 
 ## Mitä mallissa on
 
-**Mitat:** leveys 6,09 mm ja paksuus 2,28 mm (viralliset). Sisähalkaisija on 21,9 mm, eli
-sama koko kuin virallisissa tuotekuvissa, jotta malli on suoraan verrattavissa niihin.
+**Mitat:** leveys 6,09 mm ja paksuus 2,28 mm (viralliset). Sisähalkaisija on 18,45 mm (noin
+US 8,5), eli sama koko kuin virallisissa tuotekuvissa. Soikiolla vain tämä koko antaa molemmista
+virallisista näkymistä (43° ja akselin suunta) saman, uskottavan kameraetäisyyden (175–191 mm).
 
 **Poikkileikkaus.** Pyöristetty soikio, joka on pyöreä myös sisäpuolelta. Muoto on otettu
 käyttäjän antamasta referenssikuvasta: sen ääriviivaan sovitettiin kahden eksponentin superellipsi
@@ -42,18 +43,18 @@ Ouran akselin suuntaisista tuotekuvista (syvyys ulkopinnasta):
 
 | Osa | Paikka | Materiaali |
 | --- | --- | --- |
-| värillinen kuori | ulkopinta → 0,51 mm | PVD-väri |
-| kapea rako (tumma ura) | 0,56 mm | – |
-| ohut lukitusrengas | 0,61–1,11 mm | PVD-väri |
-| sauma | 1,135 mm (soikion levein kohta) | – |
-| titaaninen sisäosa ja reiän pinta | 1,16 mm → reikä | titaani |
+| värillinen kuori | ulkopinta → 0,52 mm | PVD-väri |
+| kapea rako (tumma ura) | 0,57 mm | – |
+| ohut lukitusrengas | 0,63–1,02 mm | PVD-väri |
+| sauma | 1,02 mm (hieman soikion leveimmän kohdan yläpuolella) | – |
+| titaaninen sisäosa ja reiän pinta | 1,02 mm → reikä | titaani |
 
 PVD-väri on kuoressa ja lukitusrenkaassa (Ouran purkukuvassa kultaiset ohuet renkaat
 molemmilla puolilla). Titaaninen sisäosa ja reiän pinta ovat kaikissa väreissä hopeisia.
 
 **Sensorit:** neljä erillistä ikkunaa kämmenen puolella.
 - **Sijainnit:** 2 × tri-LED ±34° ja 2 × fotodiodi ±60° keskilinjasta.
-- **Ikkuna:** kirkas, tasakattoinen linssi, kooltaan 3,8 × 3,2 mm ja kulmasäteeltään 0,75 mm.
+- **Ikkuna:** kirkas, tasakattoinen linssi, kooltaan 3,2 × 3,2 mm ja kulmasäteeltään 0,72 mm.
   Linssin yläreuna on pyöristetty. Linssi on viistereunaisessa upotuksessa, ja sen ympärillä
   on tumma tiivisterako.
 - **Linssien korkeus:** LED 0,78 mm ja fotodiodi 0,60 mm (virallinen kupukorkeus on 0,7 mm).
@@ -77,8 +78,10 @@ Deep Rose (kuparinruusu).
    - **Osien tunnistus:** sivupinnan osat näkyvät samankeskisinä renkaina. Värillinen ja
      titaaninen osa erotetaan värikylläisyydestä. Tasainen pinta erottuu vakiokirkkaudesta,
      kaareva pinta tasaisesta liukumasta.
-   - **Perspektiivikamera** ratkaistaan kolmesta havainnosta: reiän reuna, reiän pinnan lähin
-     pää ja ulkoreuna. Tulos on D ≈ 120 mm ja 112 px/mm sivupinnalla.
+   - **Perspektiivikamera** ratkaistaan reiän reunasta ja ulkoreunasta soikion geometrialla:
+     D ≈ 191 mm, f ≈ 24 240 px (3840 px kuvassa). Saumojen syvyydet saadaan projisoimalla
+     soikion sivupinnan pisteet tällä kameralla. (Aiempi laatikkomainen profiili antoi
+     D ≈ 120 mm; `tools/axial_features.py` käyttää vielä sitä yksinkertaistusta.)
    - **Riippumaton tarkistus:** sama tasainen lukitusrenkaan vyö näkyy 43°-kuvan ylä- ja
      alaosassa syvyyksillä 0,99–1,32 ja 0,36–0,74 mm. Niiden keskiarvo 0,675–1,03 mm vastaa
      aksiaalista mittausta (0,695–1,065 mm) 0,03 mm:n tarkkuudella.
@@ -89,14 +92,19 @@ Deep Rose (kuparinruusu).
 
    | Poikkileikkaus | IoU | Ääriviivavirhe keskim. | 95 % | max |
    | --- | --- | --- | --- | --- |
-   | referenssisoikio (p 3,62, q 2,51), kamera ja sormuksen koko sovitettu | 0,994 | 0,014 mm | 0,040 mm | 0,080 mm |
+   | toteutettu 3D-malli, renderöity (`?match&mask`) | 0,990 | 0,019 mm | 0,053 mm | 0,22 mm* |
+   | referenssisoikio, kamera ja sormuksen koko sovitettu | 0,994 | 0,014 mm | 0,040 mm | 0,080 mm |
    | vertailuna: eksponentit vapaina (p 4,52, q 3,07) | 0,996 | 0,010 mm | 0,028 mm | 0,044 mm |
-   | edellinen versio (kuori + lukitusrengas + sisäosa) | 0,992 | 0,019 mm | 0,046 mm | 0,062 mm |
+   | referenssisoikio aiemmalla koolla (sisähalkaisija 21,9 mm) | 0,905 | 0,218 mm | 0,446 mm | 0,495 mm |
 
-   Referenssisoikio sopii viralliseen ääriviivaan yhtä hyvin kuin aiemmat mitatut profiilit.
-   Virallinen kuva suosisi hieman kulmikkaampaa soikiota (p 4,5, q 3,1), mutta ero on alle
-   0,01 mm. Sovitus suosii myös pienempää sormuskokoa (sisähalkaisija ≈ 18,4 mm), koska
-   sormuksen koko ja kameran etäisyys korreloivat; mallin koko on pidetty ennallaan.
+   \* suurin poikkeama on sensorilinssien kohdalla, joita sovitusmalli ei sisällä.
+
+   - **Koko:** soikio sopii viralliseen ääriviivaan vain pienemmällä sormuksella. Akselin
+     suuntainen kuva vahvistaa tämän: koolla 18,45 mm kameraetäisyys on 191 mm (43°-kuvassa
+     174 mm), kun taas 21,9 mm:n koko vaatisi 68 mm:n etäisyyden. Malli käyttää siksi kokoa
+     18,45 mm. Sensori-ikkunoiden pituus kehän suunnassa seuraa mitattua 20° kulmaa (3,2 mm).
+   - **Muoto:** virallinen kuva suosisi hieman kulmikkaampaa soikiota (p 4,5, q 3,1), mutta ero
+     ääriviivassa on alle 0,01 mm. Malli käyttää referenssimuotoa sellaisenaan.
 
 3. **Avoin ristiriita:** lukitusrenkaan vyö näkyy 43°-kuvassa sekä ylä- että alaosassa noin
    5–10 px (0,2–0,45 mm) eri kohdassa kuin ääriviivaan sopiva kamera ennustaa. Kuoren ja

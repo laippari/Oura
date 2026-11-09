@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { vec2, vec3, uv, smoothstep, screenUV, length, mix, positionWorld, uniform, select } from 'three/tsl';
+import { float, vec2, vec3, uv, smoothstep, screenUV, length, mix, positionWorld, uniform, select } from 'three/tsl';
 
 // ---------------------------------------------------------------------------
 // Kirkas tuotekuvausstudio (kuten Ouran virallisissa kuvissa).
@@ -85,7 +85,9 @@ export function createGround(floorY) {
 
   // Kontaktivarjo vaalealla taustalla
   const shadowMat = new THREE.ShadowNodeMaterial({ color: 0x1a1816, opacity: 0.32, depthWrite: false });
-  const shadowPlane = new THREE.Mesh(new THREE.PlaneGeometry(90, 90), shadowMat);
+  // häivytys ennen varjokameran rajaa (muuten rajasta näkyy ohut viiva taustassa)
+  shadowMat.opacityNode = float(0.32).mul(float(1).sub(smoothstep(13, 21, length(positionWorld.xz))));
+  const shadowPlane = new THREE.Mesh(new THREE.PlaneGeometry(46, 46), shadowMat);
   shadowPlane.rotation.x = -Math.PI / 2;
   shadowPlane.position.y = floorY;
   shadowPlane.receiveShadow = true;

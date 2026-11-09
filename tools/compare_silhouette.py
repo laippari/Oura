@@ -17,7 +17,7 @@ model = np.array(Image.open(sys.argv[1]).convert('L'))
 N = model.shape[0]
 ref = np.array(Image.open(sys.argv[2]).convert('RGBA').resize((N, N), Image.LANCZOS))[..., 3] > 127
 m = model > 127
-pxmm = 6058.78 / 186.94 * (N / 1000)  # sovitetun kameran mittakaava renkaan keskellä
+pxmm = 6543.19 / 174.31 * (N / 1000)  # sovitetun kameran mittakaava renkaan keskellä
 iou = np.logical_and(m, ref).sum() / np.logical_or(m, ref).sum()
 def err(a, b):
     edge = cv2.Canny(b.astype(np.uint8) * 255, 50, 150)

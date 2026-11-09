@@ -197,11 +197,12 @@ export function frameOnBore(R, thetaC, u, v, h) {
   return m;
 }
 
-function placeOnBore(group, obj, R, thetaC, u, v, h) {
+// ku skaalaa komponentit kehän suunnassa (ikkunan pituus seuraa mitattua kulmaa ja sormuksen kokoa)
+function placeOnBore(group, obj, R, thetaC, u, v, h, ku = 1) {
   obj.updateMatrix();
   const m = frameOnBore(R, thetaC, u, v, h);
   obj.matrixAutoUpdate = false;
-  obj.matrix.premultiply(m);
+  obj.matrix.premultiply(new THREE.Matrix4().makeScale(ku, 1, 1)).premultiply(m);
   group.add(obj);
 }
 
@@ -223,25 +224,25 @@ function crossElectrode(size, mat) {
 
 // Tri-LED: valkoinen keraaminen alusta, vihreä emitteri (iso siru) sekä kapea punainen/IR-alue,
 // jossa kaksi pientä sirua ristielektrodeineen. dir = suunta kohti fotodiodia (u-akselilla).
-export function buildLEDInternals(R, thetaC, dir, mats) {
+export function buildLEDInternals(R, thetaC, dir, mats, ku = 1) {
   const group = new THREE.Group();
   group.name = 'tri-LED';
   const top = 0.17;
 
   const sub = new THREE.Mesh(new RoundedBoxGeometry(2.8, 0.14, 2.42, 2, 0.04), mats.ledSubstrate);
   sub.position.y = top - 0.07;
-  placeOnBore(group, sub, R, thetaC, 0, 0, 0);
+  placeOnBore(group, sub, R, thetaC, 0, 0, 0, ku);
 
   // vihreä emitterialue (läpikuultava silikoni) ja siru
   const gz = new THREE.Mesh(new RoundedBoxGeometry(1.24, 0.03, 1.62, 2, 0.012), mats.greenZone);
   gz.position.set(dir * 0.42, top + 0.012, 0);
-  placeOnBore(group, gz, R, thetaC, 0, 0, 0);
+  placeOnBore(group, gz, R, thetaC, 0, 0, 0, ku);
   const gd = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.08, 0.6), mats.dieGreen);
   gd.position.set(dir * 0.34, top + 0.07, 0.22);
-  placeOnBore(group, gd, R, thetaC, 0, 0, 0);
+  placeOnBore(group, gd, R, thetaC, 0, 0, 0, ku);
   const gpad = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.012, 20), mats.gold);
   gpad.position.set(dir * 0.56, top + 0.116, -0.0);
-  placeOnBore(group, gpad, R, thetaC, 0, 0, 0);
+  placeOnBore(group, gpad, R, thetaC, 0, 0, 0, ku);
   const gw = wire(
     [
       [dir * 0.56, top + 0.12, 0.0],
@@ -252,21 +253,21 @@ export function buildLEDInternals(R, thetaC, dir, mats) {
     0.009,
     mats.gold
   );
-  placeOnBore(group, gw, R, thetaC, 0, 0, 0);
+  placeOnBore(group, gw, R, thetaC, 0, 0, 0, ku);
 
   // punainen + IR -alue: kaksi pientä sirua ristielektrodeilla
   const rz = new THREE.Mesh(new RoundedBoxGeometry(0.56, 0.03, 1.48, 2, 0.012), mats.redZone);
   rz.position.set(-dir * 0.66, top + 0.012, 0.02);
-  placeOnBore(group, rz, R, thetaC, 0, 0, 0);
+  placeOnBore(group, rz, R, thetaC, 0, 0, 0, ku);
   const dies = [mats.dieRed, mats.dieIR];
   for (let i = 0; i < 2; i++) {
     const vz = 0.12 + i * 0.36;
     const d = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.07, 0.3), dies[i]);
     d.position.set(-dir * 0.66, top + 0.06, vz);
-    placeOnBore(group, d, R, thetaC, 0, 0, 0);
+    placeOnBore(group, d, R, thetaC, 0, 0, 0, ku);
     const x = crossElectrode(0.22, mats.gold);
     x.position.set(-dir * 0.66, top + 0.1, vz);
-    placeOnBore(group, x, R, thetaC, 0, 0, 0);
+    placeOnBore(group, x, R, thetaC, 0, 0, 0, ku);
     const w = wire(
       [
         [-dir * 0.66, top + 0.105, vz],
@@ -277,36 +278,36 @@ export function buildLEDInternals(R, thetaC, dir, mats) {
       0.008,
       mats.gold
     );
-    placeOnBore(group, w, R, thetaC, 0, 0, 0);
+    placeOnBore(group, w, R, thetaC, 0, 0, 0, ku);
   }
   return group;
 }
 
 // Fotodiodi: musta paketti, heijastuksenestopinnoitettu piisiru, hienot alumiinisormet,
 // kaksi bondipadia johtimineen.
-export function buildPDInternals(R, thetaC, dir, mats) {
+export function buildPDInternals(R, thetaC, dir, mats, ku = 1) {
   const group = new THREE.Group();
   group.name = 'photodiode';
   const top = 0.08;
   const pkg = new THREE.Mesh(new RoundedBoxGeometry(3.0, 0.1, 2.5, 2, 0.035), mats.pdBody);
   pkg.position.y = top - 0.05;
-  placeOnBore(group, pkg, R, thetaC, 0, 0, 0);
+  placeOnBore(group, pkg, R, thetaC, 0, 0, 0, ku);
   const si = new THREE.Mesh(new THREE.BoxGeometry(2.72, 0.02, 2.22), mats.silicon);
   si.position.y = top + 0.01;
-  placeOnBore(group, si, R, thetaC, 0, 0, 0);
+  placeOnBore(group, si, R, thetaC, 0, 0, 0, ku);
   const n = 13;
   for (let i = 0; i < n; i++) {
     const f = new THREE.Mesh(new THREE.BoxGeometry(0.014, 0.006, 2.1), mats.aluminium);
     f.position.set(-1.2 + (2.4 * i) / (n - 1), top + 0.022, 0);
-    placeOnBore(group, f, R, thetaC, 0, 0, 0);
+    placeOnBore(group, f, R, thetaC, 0, 0, 0, ku);
   }
   const bus = new THREE.Mesh(new THREE.BoxGeometry(2.5, 0.006, 0.05), mats.aluminium);
   bus.position.set(0, top + 0.022, -1.07);
-  placeOnBore(group, bus, R, thetaC, 0, 0, 0);
+  placeOnBore(group, bus, R, thetaC, 0, 0, 0, ku);
   for (const vz of [0.3, 0.72]) {
     const x = crossElectrode(0.16, mats.aluminium);
     x.position.set(dir * 0.95, top + 0.03, vz);
-    placeOnBore(group, x, R, thetaC, 0, 0, 0);
+    placeOnBore(group, x, R, thetaC, 0, 0, 0, ku);
     const w = wire(
       [
         [dir * 0.95, top + 0.035, vz],
@@ -317,7 +318,7 @@ export function buildPDInternals(R, thetaC, dir, mats) {
       0.006,
       mats.aluminium
     );
-    placeOnBore(group, w, R, thetaC, 0, 0, 0);
+    placeOnBore(group, w, R, thetaC, 0, 0, 0, ku);
   }
   return group;
 }

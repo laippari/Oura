@@ -8,23 +8,24 @@
 //  • kameran asento sovitettiin 8000 px:n tuotekuvan siluettiin (IoU 0.99), jolloin
 //    sivupinnan vyöhykkeet, sensorien paikat ja koot voitiin mitata millimetreinä;
 //  • akselin suuntaisista sivukuvista mitattiin sensorien kulma-asemat (perspektiivikorjattu).
-// Virallisten kuvien sormus on kooltaan sisähalkaisijaltaan ≈ 21.8 mm; malli käyttää samaa kokoa,
-// jotta se on suoraan verrattavissa kuviin.
+// Virallisten kuvien sormus on sisähalkaisijaltaan ≈ 18.4 mm (soikiolla sovitettuna); malli käyttää
+// samaa kokoa, jotta se on suoraan verrattavissa kuviin.
 
 export const RING = {
   width: 6.09,
   thickness: 2.28,
-  innerRadius: 10.938,
+  innerRadius: 9.224, // sisähalkaisija 18.45 mm: soikiolla molemmat viralliset näkymät antavat saman kameraetäisyyden
 
   // Poikkileikkaus: pyöristetty soikio, pyöreä myös sisäpuolelta. Kahden eksponentin superellipsi
   // |z/A|^p + |(r - rc)/B|^q = 1 sovitettu käyttäjän referenssimuotoon (keskivirhe 0.5 px) ja
   // skaalattu virallisiin mittoihin; skaalaus säilyttää eksponentit.
   crossSection: { p: 3.62, q: 2.51 },
-  // Rakenteen saumat pinnalla (säteittäinen paikka ulkopinnasta, mitattu aksiaalikuvista):
+  // Rakenteen saumat pinnalla (säteittäinen paikka ulkopinnasta, mitattu aksiaalikuvista projisoimalla
+  // soikion sivupinnan pisteet ratkaistulla kameralla D = 190.7 mm, f = 24243 px):
   // värillinen kuori | rako | värillinen lukitusrengas | sauma | titaaninen sisäosa
   seams: {
-    shellGap: { depthFromOuter: 0.5625, halfWidth: 0.05, depth: 0.03, dark: 0.6 },
-    ringSeam: { depthFromOuter: 1.135, halfWidth: 0.022, depth: 0.012, dark: 0.45 },
+    shellGap: { depthFromOuter: 0.573, halfWidth: 0.05, depth: 0.03, dark: 0.6 },
+    ringSeam: { depthFromOuter: 1.023, halfWidth: 0.022, depth: 0.012, dark: 0.45 },
   },
 
   angularSegments: 480,
@@ -36,7 +37,8 @@ export const RING = {
 export const SENSORS = {
   led: { angleDeg: 34, height: 0.78 },
   pd: { angleDeg: 60, height: 0.6 },
-  lens: { halfLength: 1.9, halfWidth: 1.6, corner: 0.75, edgeRadiusLED: 0.56, edgeRadiusPD: 0.44 },
+  // pituus kehän suuntaan = mitattu 20° kulma sisäpinnalla (20° × 9.224 mm = 3.22 mm)
+  lens: { halfLength: 1.61, halfWidth: 1.6, corner: 0.72, edgeRadiusLED: 0.5, edgeRadiusPD: 0.42 },
   pocket: { margin: 0.13, depth: 0.08, bevel: 0.07 },
 };
 

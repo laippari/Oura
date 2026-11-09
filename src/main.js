@@ -97,7 +97,8 @@ async function main() {
     lens.renderOrder = 2;
     // dir = suunta kohti fotodiodia u-akselilla (LED) / poispäin keskilinjasta (PD)
     const dir = w.sgn;
-    ring.add(isLED ? buildLEDInternals(Ri, w.thetaC, dir, mats.internals) : buildPDInternals(Ri, w.thetaC, dir, mats.internals));
+    const ku = L.halfLength / 1.9; // komponenttien mitat on annettu 3.8 mm:n ikkunalle
+    ring.add(isLED ? buildLEDInternals(Ri, w.thetaC, dir, mats.internals, ku) : buildPDInternals(Ri, w.thetaC, dir, mats.internals, ku));
   }
   add(
     buildRecessPatch({ surface: 'bore', R: Ri, thetaC: Math.PI, hA: F.pad.halfLength, hB: F.pad.halfWidth, rc: F.pad.corner, margin: patchMargin, depth: F.pad.depth, bevel: F.pad.bevel, floorMark: 1, sOf: sOfBore, L: profile.length, Rf: profile.innerRadiusAt }),
@@ -128,8 +129,8 @@ async function main() {
   // ?match = 43° tuotekuva (lineItem), ?match=axial = akselin suuntainen sivukuva (hero side view)
   const matchAxial = params.get('match') === 'axial';
   const MATCH = matchAxial
-    ? { fov: 16.62, dist: 120.4, near: 100, far: 140, offset: [0, 0], euler: [0, 0, 0] }
-    : { fov: 9.4370, dist: 186.94, near: 150, far: 230, offset: [500 - 499.7308, 500 - 541.4777], euler: [0.74527, 0.0008, 0] };
+    ? { fov: 9.06, dist: 190.7, near: 170, far: 210, offset: [0, 0], euler: [0, 0, 0] }
+    : { fov: 8.744, dist: 174.31, near: 150, far: 200, offset: [500 - 499.6772, 500 - 540.3558], euler: [0.75230, 0.00103, 0] };
   const floorY = -(boundR + 1.6);
   const ground = createGround(floorY);
   scene.add(ground.group);
