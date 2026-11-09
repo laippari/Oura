@@ -37,7 +37,10 @@ async function main() {
   // --- Näkymä ---------------------------------------------------------------
   const scene = new THREE.Scene();
   scene.backgroundNode = createBackgroundNode();
-  const envTexture = createEnvironment(renderer, params.has('lowenv') ? 256 : 512, params.get('studio') === 'contrast' ? 'contrast' : 'soft');
+  // ?studio=contrast tai #contrast (jaetuissa linkeissä välittyy vain #-osa)
+  const studioVariant = params.get('studio') === 'contrast' || location.hash === '#contrast' ? 'contrast' : 'soft';
+  addEventListener('hashchange', () => location.reload());
+  const envTexture = createEnvironment(renderer, params.has('lowenv') ? 256 : 512, studioVariant);
   scene.environment = envTexture;
 
   // --- Malli -----------------------------------------------------------------

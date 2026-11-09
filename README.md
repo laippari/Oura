@@ -163,7 +163,7 @@ mitat (kokoluokka kuvista) ja saumojen syvyydet. Oura ei julkaise CAD-malleja.
 | `?match` | virallisen tuotekuvan kamera ja valkoinen tausta (validointi) |
 | `?match&mask` | sama siluettina ääriviivavertailua varten |
 | `?match=axial` | akselin suuntaisen sivukuvan kamera |
-| `?studio=contrast` | tumma horisontti (virallisten tuotekuvien kontrasti) |
+| `?studio=contrast` tai `#contrast` | tumma horisontti (virallisten tuotekuvien kontrasti) |
 | `?match&crop=x,y,w,h` | vertailunäkymän rajaus lähikuviin (1000 px asteikko) |
 | `?nohq` | ei SSAA:ta |
 | `?rot=x,y,z&zoom=…&pan=x,y,z` | alkunäkymä |
