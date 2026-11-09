@@ -11,23 +11,13 @@ import { vec2, vec3, uv, smoothstep, screenUV, length, mix, positionWorld, unifo
 // ---------------------------------------------------------------------------
 
 function softbox(width, height, intensity, softness = 0.12, tint = [1, 1, 1]) {
-  const mat = new THREE.MeshBasicNodeMaterial({ side: THREE.DoubleSide });
+  // Lisäävä sekoitus: reunat häivyttyvät taustaan eivätkä mustaan (muuten kiillotettu metalli
+  // heijastaisi valon ympärille tumman kehyksen).
+  const mat = new THREE.MeshBasicNodeMaterial({ side: THREE.DoubleSide, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false });
   const p = uv();
   const ex = smoothstep(0, softness, p.x).mul(smoothstep(0, softness, p.x.oneMinus()));
   const ey = smoothstep(0, softness * (width / height), p.y).mul(smoothstep(0, softness * (width / height), p.y.oneMinus()));
   mat.colorNode = vec3(tint[0], tint[1], tint[2]).mul(intensity).mul(ex).mul(ey);
-  return new THREE.Mesh(new THREE.PlaneGeometry(width, height), mat);
-}
-
-function flag(width, height) {
-  const mat = new THREE.MeshBasicNodeMaterial({ side: THREE.DoubleSide });
-  const p = uv();
-  // pehmeäreunainen musta kartonki
-  const ex = smoothstep(0, 0.06, p.x).mul(smoothstep(0, 0.06, p.x.oneMinus()));
-  const ey = smoothstep(0, 0.02, p.y).mul(smoothstep(0, 0.02, p.y.oneMinus()));
-  mat.colorNode = vec3(0.0);
-  mat.opacityNode = ex.mul(ey);
-  mat.transparent = true;
   return new THREE.Mesh(new THREE.PlaneGeometry(width, height), mat);
 }
 
@@ -40,31 +30,22 @@ function aim(obj, x, y, z, target = new THREE.Vector3()) {
 export function buildStudioScene() {
   const scene = new THREE.Scene();
 
-  // Kupoli: kirkas yläpuolisko, lähes musta horisontti, harmaa pöytä.
-  // (Virallisissa kuvissa sivupinnat ja kyljet heijastavat tummaa horisonttia,
-  //  yläpuoliset pinnat ja sisäpinta kirkasta kattovaloa.)
+  // Yksinkertainen valaistus: pehmeä pystysuuntainen liukuväri (kirkas yläpuoli → harmaa
+  // horisontti → vaalea pöytä) ja yksi suuri, pehmeäreunainen yläpuolinen valo. Kiillotetussa
+  // metallissa tämä näkyy muutamana leveänä, rauhallisena heijastusvyönä.
   const domeMat = new THREE.MeshBasicNodeMaterial({ side: THREE.BackSide });
   const dirY = positionWorld.normalize().y;
-  const zenith = vec3(1.05, 1.05, 1.06);
-  const upper = vec3(0.62, 0.62, 0.63);
-  const horizon = vec3(0.018, 0.018, 0.019);
-  const lower = vec3(0.5, 0.497, 0.492);
-  const up = mix(mix(horizon, upper, smoothstep(0.12, 0.42, dirY)), zenith, smoothstep(0.5, 0.92, dirY));
-  // Pöytä suoraan alla: keskiharmaa. Sivupinta heijastaa 43°-asennossa lähes suoraan alas sekä
-  // ylä- että alaosassa, ja virallisissa kuvissa molemmat ovat yhtä harmaita.
-  const table = lower;
-  const low = mix(horizon, table, smoothstep(0.12, 0.5, dirY.negate()));
+  const zenith = vec3(1.0, 1.0, 1.0);
+  const horizon = vec3(0.3, 0.3, 0.305);
+  const below = vec3(0.2, 0.198, 0.196);
+  const table = vec3(0.6, 0.595, 0.59);
+  const up = mix(horizon, zenith, smoothstep(0.0, 0.85, dirY));
+  const low = mix(below, table, smoothstep(0.15, 0.7, dirY.negate()));
   domeMat.colorNode = select(dirY.greaterThanEqual(0), up, low);
   scene.add(new THREE.Mesh(new THREE.SphereGeometry(40, 96, 48), domeMat));
 
-  // Suuri kattosoftbox
-  scene.add(aim(softbox(22, 22, 1.6, 0.35), 0, 14, 0));
-  // Viistot ylävalot: liukuvat korostukset pyöristyksiin
-  scene.add(aim(softbox(12, 5, 2.4, 0.3), -9, 9, 5));
-  scene.add(aim(softbox(12, 5, 2.0, 0.3), 9, 9, -4));
-  // Kapeat stripit matalalla sivuilla: ohuet kirkkaat reunaviivat
-  scene.add(aim(softbox(0.9, 6, 7, 0.25), -11, 2.2, -3));
-  scene.add(aim(softbox(0.9, 6, 6, 0.25), 11, 2.2, 3));
+  // Yksi suuri pehmeä avainvalo ylhäällä, hieman kameran puolella
+  scene.add(aim(softbox(20, 14, 1.4, 0.45), 0, 13, 4));
 
   return scene;
 }

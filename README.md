@@ -27,19 +27,26 @@ Sivu toimii myös GitHub Pagesissa (repo root). three.js ladataan jsDelivr-CDN:s
 **Mitat:** leveys 6,09 mm ja paksuus 2,28 mm (viralliset). Sisähalkaisija on 21,9 mm, eli
 sama koko kuin virallisissa tuotekuvissa, jotta malli on suoraan verrattavissa niihin.
 
-**Poikkileikkaus.** Sivupinnalla on kolme osaa, kuten Ouran purkukuvassa: värillinen kuori, ohut
-värillinen lukitusrengas ja pyöreäreunainen titaaninen sisäosa. Säteittäiset rajat on mitattu
-akselin suuntaisista tuotekuvista ja muoto 43°-tuotekuvan ääriviivasta (ks. *Miten muoto
-validoitiin*). Syvyydet on mitattu ulkopinnasta:
+**Poikkileikkaus.** Pyöristetty soikio, joka on pyöreä myös sisäpuolelta. Muoto on otettu
+käyttäjän antamasta referenssikuvasta: sen ääriviivaan sovitettiin kahden eksponentin superellipsi
 
-| Osa | Mitta | Materiaali |
+    |z / A|^3,62 + |(r − rc) / B|^2,51 = 1
+
+(keskivirhe 0,5 px referenssikuvassa). Se on skaalattu Ouran virallisiin mittoihin
+6,09 × 2,28 mm (A = 3,045, B = 1,14). Skaalaus säilyttää eksponentit, joten soikio vain venyy
+vaakasuunnassa. Reiän pinta on kupera ja nousee reunoja kohti; sensori-ikkunat, suuntausmerkki ja
+yläosan levy seuraavat kaarevaa pintaa.
+
+Rakenne näkyy pinnalla ohuina saumoina, ei portaina. Saumojen säteittäiset paikat on mitattu
+Ouran akselin suuntaisista tuotekuvista (syvyys ulkopinnasta):
+
+| Osa | Paikka | Materiaali |
 | --- | --- | --- |
-| tasainen ulkopinta | – | PVD-väri |
-| kuoren reuna: kaarevuus kasvaa tasaisesti (θ ∝ s^2,8) | ulottuma 1,22 mm, syvyys 0,515 mm, loppusäde ≈ 0,34 mm | PVD-väri |
-| rako kuoren ja lukitusrenkaan välissä | 0,52–0,61 mm | – |
-| lukitusrengas (pyöristetyt reunat, tasainen pinta 0,695–1,065 mm) | 0,61–1,11 mm | PVD-väri |
-| sauma | 1,11–1,16 mm | – |
-| titaaninen sisäosa: loivasti kupera pinta, 0,08 mm:n pyöristys reikään | 1,16 mm → reikä | titaani |
+| värillinen kuori | ulkopinta → 0,51 mm | PVD-väri |
+| kapea rako (tumma ura) | 0,56 mm | – |
+| ohut lukitusrengas | 0,61–1,11 mm | PVD-väri |
+| sauma | 1,135 mm (soikion levein kohta) | – |
+| titaaninen sisäosa ja reiän pinta | 1,16 mm → reikä | titaani |
 
 PVD-väri on kuoressa ja lukitusrenkaassa (Ouran purkukuvassa kultaiset ohuet renkaat
 molemmilla puolilla). Titaaninen sisäosa ja reiän pinta ovat kaikissa väreissä hopeisia.
@@ -75,45 +82,43 @@ Deep Rose (kuparinruusu).
    - **Riippumaton tarkistus:** sama tasainen lukitusrenkaan vyö näkyy 43°-kuvan ylä- ja
      alaosassa syvyyksillä 0,99–1,32 ja 0,36–0,74 mm. Niiden keskiarvo 0,675–1,03 mm vastaa
      aksiaalista mittausta (0,695–1,065 mm) 0,03 mm:n tarkkuudella.
-2. **Muoto 43°-ääriviivasta** (`tools/fit_camera.py`, `tools/fit_profile.py`). Rengas on
-   pyörähdyskappale, joten ääriviiva riippuu vain poikkileikkauksesta ja kamerasta, ei
-   valaistuksesta.
-   - **Sovitettavat parametrit:** kuoren reunan kaarevuuden kasvu, sen kääntymiskulma ja
-     sisäosan reunan muoto sovitetaan yhdessä kameran kanssa. Aksiaaliset säteet pysyvät kiinteinä.
-   - **Kuoren reuna:** päätyy 90° kääntymiskulmaan. Yli 90° kaartuva, täysin pyöreä reuna ei
-     paranna sovitusta.
-   - **Reiän reuna:** ääriviiva vaatii reiän pinnan ulottuvan noin 0,07 mm:n päähän
-     sivupinnasta. Pyöristyksen säde voi siksi olla enintään noin 0,09 mm.
+2. **Poikkileikkauksen muoto** tulee käyttäjän referenssimuodosta (yllä). Aiemmat versiot
+   sovitettiin 43°-tuotekuvan ääriviivaan (`tools/fit_camera.py`, `tools/fit_profile.py`).
+   Vertailu viralliseen ääriviivaan, kun kamera sovitetaan uudelleen soikiolle
+   (`tools/compare_silhouette.py`):
 
-   | Profiili | IoU | Ääriviivavirhe keskim. | 95 % | max |
+   | Poikkileikkaus | IoU | Ääriviivavirhe keskim. | 95 % | max |
    | --- | --- | --- | --- | --- |
-   | toteutettu 3D-malli, renderöity (`?match&mask`) | 0,992 | 0,019 mm | 0,046 mm | 0,062 mm |
+   | referenssisoikio (p 3,62, q 2,51), kamera ja sormuksen koko sovitettu | 0,994 | 0,014 mm | 0,040 mm | 0,080 mm |
+   | vertailuna: eksponentit vapaina (p 4,52, q 3,07) | 0,996 | 0,010 mm | 0,028 mm | 0,044 mm |
+   | edellinen versio (kuori + lukitusrengas + sisäosa) | 0,992 | 0,019 mm | 0,046 mm | 0,062 mm |
 
-   Tarkistustyökalu: `tools/compare_silhouette.py`.
+   Referenssisoikio sopii viralliseen ääriviivaan yhtä hyvin kuin aiemmat mitatut profiilit.
+   Virallinen kuva suosisi hieman kulmikkaampaa soikiota (p 4,5, q 3,1), mutta ero on alle
+   0,01 mm. Sovitus suosii myös pienempää sormuskokoa (sisähalkaisija ≈ 18,4 mm), koska
+   sormuksen koko ja kameran etäisyys korreloivat; mallin koko on pidetty ennallaan.
+
 3. **Avoin ristiriita:** lukitusrenkaan vyö näkyy 43°-kuvassa sekä ylä- että alaosassa noin
-   5–10 px (0,2–0,45 mm) alempana kuin mikään ääriviivaan sopiva kamera ennustaa.
-   - **Kokeillut selitykset:** kuoren ja lukitusrenkaan keskinäinen syvyys (−0,15 … +0,4 mm)
-     ja yli 90° kaartuva kuoren reuna. Kumpikaan ei sovita vyötä ja ääriviivaa yhtä aikaa.
-   - **Ratkaisu:** malli perustuu johdonmukaisiin havaintoihin eli ääriviivaan ja aksiaalisiin
-     säteisiin. Kuori ja lukitusrengas ovat samassa tasossa.
+   5–10 px (0,2–0,45 mm) eri kohdassa kuin ääriviivaan sopiva kamera ennustaa. Kuoren ja
+   renkaan keskinäinen syvyys tai täysin pyöreä kuoren reuna eivät selittäneet eroa.
 4. **Rinnakkaisrenderöinnit** virallisen kuvan kameralla: `?match` (43°) ja `?match=axial`
-   (akselin suunta). Studiovalaistus on säädetty niin, että sivupinnan ylä- ja alaosa näyttävät
-   samoilta kuin virallisessa kuvassa.
+   (akselin suunta).
 
 Virallisia kuvia ei ole tallennettu repoon. Ne löytyvät Ouran kauppasivulta
 (ouraring.com/store/rings/oura-ring-5).
 
 **Arvioita:** suuntausmerkin ja yläosan levyn tarkka syvyys, sensorikomponenttien sisäiset
-mitat (kokoluokka kuvista), rakojen syvyydet ja titaanisen sisäosan pinnan tarkka kaarevuus.
-Niitä ei näe ääriviivasta. Oura ei julkaise CAD-malleja.
+mitat (kokoluokka kuvista) ja saumojen syvyydet. Oura ei julkaise CAD-malleja.
 
 ## Renderöinti
 
 - **WebGPU** three.js:n `WebGPURenderer`illä (TSL → WGSL). Jos WebGPU ei ole saatavilla,
   käytetään automaattisesti WebGL 2:ta. Käytössä oleva taustajärjestelmä näkyy oikeassa
   yläkulmassa.
-- **Studio:** kirkas tuotekuvausstudio, jossa on valoisa yläpuolisko, tumma horisontti ja
-  vaalea pöytä, kuten virallisissa kuvissa. Valaistus esisuodatetaan PMREM-kartaksi.
+- **Studio:** yksinkertainen ja rauhallinen. Pehmeä pystysuuntainen liukuväri (kirkas yläpuoli,
+  harmaa horisontti, vaalea pöytä) ja yksi suuri pehmeäreunainen valo ylhäällä. Valo lisätään
+  taustan päälle, joten sen reunat eivät heijastu tummina kehyksinä. Kiillotetussa metallissa
+  näkyy muutama leveä heijastusvyö. Valaistus esisuodatetaan PMREM-kartaksi.
 - **Sisäpinnan heijastukset:** kiillotettu sisäpinta heijastaa vastakkaista seinäänsä. Tämä
   lasketaan sävyttimessä analyyttisesti sylinteriä vasten (3 pomppua, Fresnel jokaisella
   pompulla).

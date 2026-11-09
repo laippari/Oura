@@ -44,19 +44,29 @@ export function rrContour(hA, hB, rc, nE = 22, nC = 14) {
   return out;
 }
 
-// Kartoitus (u, v, h) -> renkaan koordinaatisto.
-function makeMapper(surface, R, thetaC, zc) {
+// Kartoitus (u, v, h) -> renkaan koordinaatisto. Pinta seuraa poikkileikkauksen kaarevuutta:
+// Rf(z) antaa pinnan säteen akselin kohdassa z, ja h mitataan pinnan todellista normaalia pitkin.
+function makeMapper(surface, R, thetaC, zc, Rf = () => R) {
   const sign = surface === 'bore' ? -1 : 1; // h kasvaa sisäpinnalla kohti akselia
+  const e = 1e-4;
   return (u, v, h) => {
     const th = thetaC + u / R;
-    const rad = R + sign * h;
+    const z = zc + v;
+    const rs = Rf(z);
+    const dR = (Rf(z + e) - Rf(z - e)) / (2 * e);
+    const k = 1 / Math.hypot(1, dR);
     const s = Math.sin(th);
     const c = Math.cos(th);
+    // pinnan normaali (z, r)-tasossa: ulkopinnalla (-R', 1), reiässä (R', -1)
+    const nz = -sign * dR * k;
+    const nr = sign * k;
+    const er = [s, -c, 0];
+    const eh = [nr * er[0], nr * er[1], nz];
     return {
-      p: [rad * s, -rad * c, zc + v],
+      p: [rs * er[0] + h * eh[0], rs * er[1] + h * eh[1], z + h * eh[2]],
       eu: [c, s, 0],
-      ev: [0, 0, 1],
-      eh: [sign * s, -sign * c, 0],
+      ev: [dR * k * er[0], dR * k * er[1], k],
+      eh,
       th,
     };
   };
@@ -104,8 +114,8 @@ function ringIndices(nRings, nPer, idx) {
 // Upotettu laikku: reunassa (offset = margin) pinnan tasalla, viiste alas, tasainen pohja.
 // Runko piilotetaan materiaalissa laikun alueelta, joten saumaa ei synny.
 export function buildRecessPatch(o) {
-  const { surface, R, thetaC, zc = 0, hA, hB, rc, margin, depth, bevel, floorGap = 0, floorMark = 0, sOf, L } = o;
-  const map = makeMapper(surface, R, thetaC, zc);
+  const { surface, R, thetaC, zc = 0, hA, hB, rc, margin, depth, bevel, floorGap = 0, floorMark = 0, sOf, L, Rf } = o;
+  const map = makeMapper(surface, R, thetaC, zc, Rf);
   const dmin = -Math.min(hA, hB) + 1e-4;
   const offs = [margin, margin * 0.6, margin * 0.3, margin * 0.1, 0];
   for (let k = 1; k <= 9; k++) offs.push(-bevel * (k / 9));
@@ -143,8 +153,8 @@ export function buildRecessPatch(o) {
 
 // Kirkas linssi: pystysuora sivuseinä, pyöristetty yläreuna, tasainen yläpinta.
 export function buildLens(o) {
-  const { R, thetaC, hA, hB, rc, H, rr, base } = o;
-  const map = makeMapper('bore', R, thetaC, 0);
+  const { R, thetaC, hA, hB, rc, H, rr, base, Rf } = o;
+  const map = makeMapper('bore', R, thetaC, 0, Rf);
   const rings = [];
   rings.push({ d: 0, h: base, n: [1, 0] });
   rings.push({ d: 0, h: H - rr, n: [1, 0] });

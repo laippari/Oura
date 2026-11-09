@@ -1,207 +1,142 @@
 // Renkaan poikkileikkausprofiili (z = akselin suunta, r = säde).
 //
-// Rakenne (Ouran purkukuva + aksiaaliset tuotekuvat), sivupinnalla ulkoa sisään:
-//   värillinen kuori: tasainen ulkopinta, jonka reuna kaartuu kaarevuuden kasvaessa tasaisesti
-//     (G2-jatkuva alku, pyöreä loppu) 0.515 mm:n syvyyteen; kuoren pää jää lukitusrenkaan
-//     pinnan tason sisäpuolelle
-//   kapea rako
-//   värillinen ohut lukitusrengas (tasainen pinta, pyöristetyt reunat) – sormuksen levein kohta
-//   sauma
-//   titaaninen sisäosa: pyöreäreunainen, kaartuu sivupinnalta reiän pinnaksi
-// Mitat: säteittäiset rajat aksiaalikuvasta (perspektiivikamera ratkaistu reiän reunasta,
-// lähireunan peittorajasta ja ulkoreunasta), muoto 43°-tuotekuvan ääriviivasta
-// (tools/fit_profile.py, tools/axial_features.py).
+// Muoto: pyöristetty soikio, joka on pyöreä myös sisäpuolelta (käyttäjän referenssimuoto).
+// Referenssin ääriviivaan sovitettiin kahden eksponentin superellipsi
+//     |z / A|^p + |(r - rc) / B|^q = 1,   p ≈ 3.62 (vaaka), q ≈ 2.51 (pysty)
+// (keskivirhe 0.5 px), ja se skaalataan Ouran virallisiin mittoihin 6.09 × 2.28 mm.
+// Skaalaus säilyttää eksponentit, joten muodon luonne pysyy samana – soikio vain venyy vaakaan.
 //
-// Profiili rakennetaan oikeasta puolikkaasta (z ≥ 0), peilataan ja näytteistetään
-// adaptiivisesti. Kierto on vastapäivään (z vaaka, r pysty), joten ulkonormaali on (dr, -dz).
+// Rakenne näkyy pinnalla ohuina saumoina (ei portaita): värillinen kuori – kapea rako –
+// ohut värillinen lukitusrengas – sauma – titaaninen sisäosa. Saumojen säteittäiset paikat on
+// mitattu Ouran akselin suuntaisista tuotekuvista (tools/axial_features.py).
+//
+// Kierto on vastapäivään (z vaaka, r pysty), joten ulkonormaali on (dr, -dz).
+// Silmukka alkaa ja päättyy reiän pinnan keskelle (z = 0, r = Ri).
 
-// Kuoren reuna: normaalin kääntymiskulma theta(u) = Phi * u^(ramp+1) kaarenpituuden suhteen (u = s/S).
-// Kaarevuus kasvaa tasaisesti nollasta (G2-liitos ulkopintaan). Kun Phi > 90°, reuna kaartuu
-// levein kohdan ohi takaisin sisäänpäin (täysin pyöreä reuna) ja päättyy säteittäiseen syvyyteen drop.
-export function cornerCurve(ramp, drop, endAngleDeg = 90, k = 400) {
-  const Phi = (endAngleDeg * Math.PI) / 180;
-  const M = 20000;
-  const z = new Float64Array(M + 1);
-  const d = new Float64Array(M + 1);
-  for (let i = 1; i <= M; i++) {
-    const t0 = Phi * Math.pow((i - 1) / M, ramp + 1);
-    const t1 = Phi * Math.pow(i / M, ramp + 1);
-    z[i] = z[i - 1] + (0.5 * (Math.cos(t0) + Math.cos(t1))) / M;
-    d[i] = d[i - 1] + (0.5 * (Math.sin(t0) + Math.sin(t1))) / M;
-  }
-  const S = drop / d[M];
-  const pts = [];
-  let iMax = 0;
-  for (let j = 0; j <= k; j++) {
-    const i = Math.round((j / k) * M);
-    pts.push([z[i] * S, -d[i] * S]);
-    if (pts[j][0] > pts[iMax][0]) iMax = j;
-  }
-  return { pts, iMax, zMax: pts[iMax][0], depthAtMax: -pts[iMax][1], arcLength: S, endRadius: S / ((ramp + 1) * Phi) };
-}
+const spow = (x, e) => Math.sign(x) * Math.pow(Math.abs(x), e);
 
 export function buildProfile(cfg) {
-  const a = cfg.width / 2;
+  const A = cfg.width / 2;
+  const B = cfg.thickness / 2;
   const Ri = cfg.innerRadius;
   const Ro = Ri + cfg.thickness;
-  const C = cfg.corner;
-  const G = cfg.shellGap;
-  const LR = cfg.lockingRing;
-  const SM = cfg.seam;
-  const F = cfg.innerEdge;
+  const rc = Ri + B;
+  const { p, q } = cfg.crossSection;
 
-  const corner = cornerCurve(C.ramp, C.drop, C.endAngleDeg);
-
-  // --- Oikea puolikas tiheänä polylinjana ------------------------------------
-  const pts = []; // [z, r, region, cavity]
-  const step = 0.0005;
-  const push = (z, r, region, cav = 1) => pts.push([z, r, region, cav]);
-  const line = (z0, r0, z1, r1, region, cav0 = 1, cav1 = cav0) => {
-    const n = Math.max(2, Math.ceil(Math.hypot(z1 - z0, r1 - r0) / step));
-    for (let i = 0; i < n; i++) {
-      const t = i / n;
-      push(z0 + (z1 - z0) * t, r0 + (r1 - r0) * t, region, cav0 + (cav1 - cav0) * t);
-    }
-  };
-  // pyöristys kahden suoran välillä (neliöllinen Bézier, kontrollipiste kulmassa)
-  const round = (p0, c, p1, region, cav0 = 1, cav1 = cav0) => {
-    const n = 600;
-    for (let i = 0; i < n; i++) {
-      const t = i / n;
-      const u = 1 - t;
-      push(u * u * p0[0] + 2 * u * t * c[0] + t * t * p1[0], u * u * p0[1] + 2 * u * t * c[1] + t * t * p1[1], region, cav0 + (cav1 - cav0) * t);
-    }
-  };
-
-  // 1) reiän pinta keskeltä sisäosan reunan pyöristykseen
-  //    Ääriviiva vaatii reiän pinnan ulottuvan ~0.07 mm:n päähän sivupinnan tasosta, joten reunan
-  //    pyöristyssäde on enintään ~0.09 mm (tukifunktioehto); pinta sen yläpuolella on loivasti kupera.
-  const rho = F.edgeRadius;
-  const zEdgeC = a - F.edgeInset - rho; // pyöristyksen keskipiste (z)
-  line(0, Ri, zEdgeC, Ri, 'shell');
-  // 2) pyöristys reiän pinnasta sivupinnalle (neljännesympyrä)
-  {
-    const M = 240;
-    for (let i = 0; i < M; i++) {
-      const t = -Math.PI / 2 + (Math.PI / 2) * (i / M);
-      push(zEdgeC + rho * Math.cos(t), Ri + rho + rho * Math.sin(t), 'shell');
-    }
+  // 1) Tiheä näytteistys parametrista t ∈ [-π/2, 3π/2]
+  const N = 160000;
+  const dz = new Float64Array(N + 1);
+  const dr = new Float64Array(N + 1);
+  const ds = new Float64Array(N + 1);
+  let acc = 0;
+  for (let i = 0; i <= N; i++) {
+    const t = -Math.PI / 2 + (i / N) * Math.PI * 2;
+    const z = A * spow(Math.cos(t), 2 / p);
+    const r = rc + B * spow(Math.sin(t), 2 / q);
+    if (i > 0) acc += Math.hypot(z - dz[i - 1], r - dr[i - 1]);
+    dz[i] = z;
+    dr[i] = r;
+    ds[i] = acc;
   }
-  //    ja loivasti kupera pinta ylös saumaan (alkaa pystysuorana, kallistuu hieman sisään)
-  {
-    const p0 = [zEdgeC + rho, Ri + rho];
-    const c = [zEdgeC + rho, Ri + rho + (F.height - rho) * 0.45];
-    const p1 = [a - F.recess, Ri + F.height];
-    const M = 1200;
-    for (let i = 0; i < M; i++) {
-      const t = i / M;
-      const u = 1 - t;
-      push(u * u * p0[0] + 2 * u * t * c[0] + t * t * p1[0], u * u * p0[1] + 2 * u * t * c[1] + t * t * p1[1], 'shell');
-    }
-  }
-  // 3) sisäosan yläreunan pieni pyöristys ja sauma lukitusrenkaaseen
-  const zF = a - F.recess;
-  const rF = Ri + F.height;
-  const rS0 = rF + F.topEdge; // sauman sisäseinä
-  const rS1 = Ro - LR.inner; // sauman ulkoseinä = lukitusrenkaan sisäreuna
-  const zSm = a - SM.depth;
-  round([zF, rF], [zF, rS0], [zF - F.topEdge, rS0], 'shell', 1, 0.6);
-  line(zF - F.topEdge, rS0, zSm, rS0, 'shell', 0.6, 0.15);
-  line(zSm, rS0, zSm, (rS0 + rS1) / 2, 'shell', 0.12, 0.1);
-  line(zSm, (rS0 + rS1) / 2, zSm, rS1, 'frame', 0.1, 0.12);
-  // 4) lukitusrengas – sormuksen levein kohta (pinta z = a): sisäreunan pyöristys, tasainen pinta,
-  //    ulkoreunan pyöristys alas renkaan ulkoseinälle
-  const zL = a - LR.recess;
-  line(zSm, rS1, zL - LR.innerEdge, rS1, 'frame', 0.15, 0.6);
-  round([zL - LR.innerEdge, rS1], [zL, rS1], [zL, rS1 + LR.innerEdge], 'frame', 0.6, 1);
-  const rLout = Ro - LR.outer;
-  line(zL, rS1 + LR.innerEdge, zL, rLout - LR.outerEdge, 'frame');
-  round([zL, rLout - LR.outerEdge], [zL, rLout], [zL - LR.outerEdge, rLout], 'frame', 1, 0.7);
-  // 5) rako lukitusrenkaan ja kuoren välissä
-  const zShellMax = a - C.recess; // kuoren levein kohta
-  const zc0 = zShellMax - corner.zMax; // kulman alku ulkopinnalla
-  const endPt = corner.pts[corner.pts.length - 1];
-  const zShellEnd = zc0 + endPt[0];
-  const zG = Math.min(zShellEnd, zL - LR.outerEdge) - G.depth;
-  const rGs = Ro - G.shellWall; // kuoren puoleinen seinä
-  line(zL - LR.outerEdge, rLout, zG, rLout, 'frame', 0.7, 0.12);
-  line(zG, rLout, zG, rGs, 'frame', 0.1, 0.1);
-  line(zG, rGs, zShellEnd - G.edge, rGs, 'frame', 0.12, 0.6);
-  // kuoren pään pieni pyöristys kulmakaaren loppuun
-  round([zShellEnd - G.edge, rGs], [zShellEnd, rGs], [zShellEnd, Ro - C.drop], 'frame', 0.6, 1);
-  // 6) kuoren pyöreä reuna (käännetty: päästä ulkopinnalle) ja ulkopinta
-  for (let i = corner.pts.length - 1; i >= 0; i--) {
-    const [dz, dr] = corner.pts[i];
-    const prev = pts[pts.length - 1];
-    line(prev[0], prev[1], zc0 + dz, Ro + dr, 'frame');
-  }
-  line(zc0, Ro, 0, Ro, 'frame');
-  push(0, Ro, 'frame');
-
-  // --- Koko silmukka: oikea puolikas + peilattu vasen puolikas -------------------
-  const right = pts;
-  const left = right
-    .slice(0, -1)
-    .reverse()
-    .map(([z, r, reg, cav]) => [-z, r, reg, cav]);
-  const loop = right.concat(left.slice(1));
-  // silmukka alkaa ja päättyy sisäpinnan keskelle (z = 0, r = Ri)
-
-  const N = loop.length;
-  const ds = new Float64Array(N);
-  for (let i = 1; i < N; i++) ds[i] = ds[i - 1] + Math.hypot(loop[i][0] - loop[i - 1][0], loop[i][1] - loop[i - 1][1]);
-  const L = ds[N - 1];
+  dz[N] = dz[0];
+  dr[N] = dr[0];
+  const L = acc;
 
   const tangentAt = (i) => {
-    const i0 = Math.max(0, i - 2);
-    const i1 = Math.min(N - 1, i + 2);
-    let tz = loop[i1][0] - loop[i0][0];
-    let tr = loop[i1][1] - loop[i0][1];
-    if (i === 0 || i === N - 1) {
-      tz = loop[2][0] - loop[N - 3][0];
-      tr = loop[2][1] - loop[N - 3][1];
-    }
+    const a0 = (((i - 2) % N) + N) % N;
+    const a1 = (i + 2) % N;
+    const tz = dz[a1] - dz[a0];
+    const tr = dr[a1] - dr[a0];
     const l = Math.hypot(tz, tr) || 1;
     return [tz / l, tr / l];
   };
 
-  // --- Adaptiivinen uudelleennäytteistys --------------------------------------
+  // 2) Saumat: kaarenpituudet, joissa käyrä ylittää saumojen säteet (oikea ja vasen puoli)
+  const crossings = (rTarget) => {
+    const out = [];
+    for (let i = 1; i <= N; i++) {
+      if ((dr[i - 1] - rTarget) * (dr[i] - rTarget) <= 0 && dr[i] !== dr[i - 1]) {
+        const f = (rTarget - dr[i - 1]) / (dr[i] - dr[i - 1]);
+        out.push(ds[i - 1] + f * (ds[i] - ds[i - 1]));
+      }
+    }
+    return out;
+  };
+  const S = cfg.seams;
+  const grooves = [];
+  for (const g of [S.shellGap, S.ringSeam]) {
+    for (const s0 of crossings(Ro - g.depthFromOuter)) grooves.push({ s0, w: g.halfWidth, d: g.depth, dark: g.dark });
+  }
+  const rRegion = Ro - S.ringSeam.depthFromOuter; // värillinen (PVD) yläpuolella, titaani alapuolella
+
+  const groove = (s) => {
+    let g = 0;
+    let dg = 0;
+    let dark = 0;
+    for (const gr of grooves) {
+      const u = (s - gr.s0) / gr.w;
+      if (Math.abs(u) < 1) {
+        const k = 1 - u * u;
+        g += gr.d * k * k;
+        dg += (gr.d * -4 * u * k) / gr.w;
+        dark = Math.max(dark, gr.dark * k * k);
+      }
+    }
+    return [g, dg, dark];
+  };
+
+  // 3) Adaptiivinen uudelleennäytteistys: tiheämmin kaarevissa kohdissa ja saumoissa
   const maxStep = cfg.profileMaxStep;
   const maxTurn = (cfg.profileMaxTurnDeg * Math.PI) / 180;
+  const nearGroove = (s) => grooves.some((g) => Math.abs(s - g.s0) < g.w * 2.5);
   const picked = [0];
   let lastS = 0;
   let lastT = tangentAt(0);
-  for (let i = 1; i < N - 1; i++) {
+  for (let i = 1; i < N; i++) {
     const t = tangentAt(i);
     const turn = Math.acos(Math.min(1, Math.max(-1, t[0] * lastT[0] + t[1] * lastT[1])));
-    // tiheämpi näytteistys sivupinnan pienissä yksityiskohdissa (sauma, lukitusrengas, rako)
-    const fine = Math.abs(loop[i][0]) > a - 0.2 && loop[i][1] > rF - 0.05 && loop[i][1] < Ro - C.drop + 0.02;
-    const lim = fine ? Math.min(maxStep, 0.01) : maxStep;
-    const dS = ds[i] - lastS;
-    if (dS >= lim || (turn >= maxTurn && dS >= 0.004)) {
+    const lim = nearGroove(ds[i]) ? 0.006 : maxStep;
+    if (ds[i] - lastS >= lim || turn >= maxTurn) {
       picked.push(i);
       lastS = ds[i];
       lastT = t;
     }
   }
-  picked.push(N - 1);
+  picked.push(N);
 
   const samples = picked.map((i) => {
-    const [tz, tr] = tangentAt(i);
-    const [z, r, region, cavity] = loop[i];
-    return { z, r, nz: tr, nr: -tz, tz, tr, s: ds[i], v: ds[i] / L, inner: region === 'shell', region, cavity };
+    const s = ds[i];
+    const [tz, tr] = tangentAt(i === N ? 0 : i);
+    const nz = tr;
+    const nr = -tz;
+    const [g, dg, dark] = groove(s);
+    // siirretty piste ja sen normaali: N' = N + T * g'(s)
+    const z = dz[i] - nz * g;
+    const r = dr[i] - nr * g;
+    let mz = nz + tz * dg;
+    let mr = nr + tr * dg;
+    const ml = Math.hypot(mz, mr);
+    mz /= ml;
+    mr /= ml;
+    const region = dr[i] > rRegion ? 'frame' : 'shell';
+    return { z, r, nz: mz, nr: mr, tz, tr, s, v: s / L, inner: region === 'shell', region, cavity: 1 - dark };
   });
+
+  // Pinnan säde akselin kohdassa z (sisä- ja ulkopinta, suljettu muoto)
+  const halfHeight = (z) => B * Math.pow(Math.max(0, 1 - Math.pow(Math.min(1, Math.abs(z) / A), p)), 1 / q);
+  const innerRadiusAt = (z) => rc - halfHeight(z);
+  const outerRadiusAt = (z) => rc + halfHeight(z);
 
   return {
     samples,
     length: L,
-    halfWidth: a,
+    halfWidth: A,
     innerRadius: Ri,
     outerRadius: Ro,
+    centerRadius: rc,
     sBoreMid: 0,
-    sOuterMid: L / 2,
-    flatOuterHalf: a - C.recess - corner.zMax,
-    cornerEndRadius: corner.endRadius,
-    flatInnerHalf: zEdgeC,
+    sOuterMid: ds[Math.round(N / 2)],
+    innerRadiusAt,
+    outerRadiusAt,
   };
 }

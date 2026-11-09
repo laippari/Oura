@@ -3,7 +3,8 @@
 // Viralliset luvut (Oura): leveys 6.09 mm, paksuus 2.28 mm, sensorikuvun korkeus 0.7 mm,
 // 2 × tri-LED + 2 × fotodiodi, titaaninen ulkokehys + titaaninen sisäkuori, PVD-pinnoite.
 //
-// Muoto ja yksityiskohdat on mitattu Ouran virallisista tuotekuvista (ks. README):
+// Poikkileikkaus on käyttäjän referenssisoikio skaalattuna virallisiin mittoihin; muut
+// yksityiskohdat on mitattu Ouran virallisista tuotekuvista (ks. README):
 //  • kameran asento sovitettiin 8000 px:n tuotekuvan siluettiin (IoU 0.99), jolloin
 //    sivupinnan vyöhykkeet, sensorien paikat ja koot voitiin mitata millimetreinä;
 //  • akselin suuntaisista sivukuvista mitattiin sensorien kulma-asemat (perspektiivikorjattu).
@@ -15,16 +16,16 @@ export const RING = {
   thickness: 2.28,
   innerRadius: 10.938,
 
-  // Sivupinnan rakenne (säteittäiset mitat ulkopinnasta, mm) – mitattu aksiaalisista
-  // tuotekuvista (tools/axial_features.py), muoto 43°-kuvan ääriviivasta (tools/fit_profile.py).
-  // Kuoren reuna: kaarevuus kasvaa tasaisesti (theta ~ s^(ramp+1)) 1.22 mm:n matkalla ja päättyy
-  // sivupinnan tasoon pyöreästi (loppusäde ≈ 0.34 mm). Sovitettu 43°-kuvan ääriviivaan (tools/fit_profile.py).
-  corner: { drop: 0.515, ramp: 1.8, endAngleDeg: 90, recess: 0.0 },
-  shellGap: { shellWall: 0.545, depth: 0.12, edge: 0.03 }, // rako kuoren ja lukitusrenkaan välissä
-  lockingRing: { outer: 0.61, inner: 1.11, recess: 0.0, outerEdge: 0.085, innerEdge: 0.04 },
-  seam: { depth: 0.12 }, // sauma lukitusrenkaan ja titaanisen sisäosan välissä
-  // Titaaninen sisäosa: pyöreä reuna sivupinnan tasosta (korkeus reiän pinnasta) reiän pintaan
-  innerEdge: { height: 1.09, edgeRadius: 0.08, edgeInset: 0.024, recess: 0.1, topEdge: 0.03 },
+  // Poikkileikkaus: pyöristetty soikio, pyöreä myös sisäpuolelta. Kahden eksponentin superellipsi
+  // |z/A|^p + |(r - rc)/B|^q = 1 sovitettu käyttäjän referenssimuotoon (keskivirhe 0.5 px) ja
+  // skaalattu virallisiin mittoihin; skaalaus säilyttää eksponentit.
+  crossSection: { p: 3.62, q: 2.51 },
+  // Rakenteen saumat pinnalla (säteittäinen paikka ulkopinnasta, mitattu aksiaalikuvista):
+  // värillinen kuori | rako | värillinen lukitusrengas | sauma | titaaninen sisäosa
+  seams: {
+    shellGap: { depthFromOuter: 0.5625, halfWidth: 0.05, depth: 0.03, dark: 0.6 },
+    ringSeam: { depthFromOuter: 1.135, halfWidth: 0.022, depth: 0.012, dark: 0.45 },
+  },
 
   angularSegments: 480,
   profileMaxStep: 0.06,

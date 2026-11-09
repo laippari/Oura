@@ -84,13 +84,13 @@ async function main() {
   };
   for (const w of windows) {
     add(
-      buildRecessPatch({ surface: 'bore', R: Ri, thetaC: w.thetaC, hA: pocketA, hB: pocketB, rc: pocketR, margin: patchMargin, depth: P.depth, bevel: P.bevel, floorGap: 1, sOf: sOfBore, L: profile.length }),
+      buildRecessPatch({ surface: 'bore', R: Ri, thetaC: w.thetaC, hA: pocketA, hB: pocketB, rc: pocketR, margin: patchMargin, depth: P.depth, bevel: P.bevel, floorGap: 1, sOf: sOfBore, L: profile.length, Rf: profile.innerRadiusAt }),
       mats.innerPatch,
       w.kind + '-pocket'
     );
     const isLED = w.kind === 'led';
     const lens = add(
-      buildLens({ R: Ri, thetaC: w.thetaC, hA: L.halfLength, hB: L.halfWidth, rc: L.corner, H: isLED ? SENSORS.led.height : SENSORS.pd.height, rr: isLED ? L.edgeRadiusLED : L.edgeRadiusPD, base: -P.depth }),
+      buildLens({ R: Ri, thetaC: w.thetaC, hA: L.halfLength, hB: L.halfWidth, rc: L.corner, H: isLED ? SENSORS.led.height : SENSORS.pd.height, rr: isLED ? L.edgeRadiusLED : L.edgeRadiusPD, base: -P.depth, Rf: profile.innerRadiusAt }),
       mats.lens,
       w.kind + '-lens'
     );
@@ -100,12 +100,12 @@ async function main() {
     ring.add(isLED ? buildLEDInternals(Ri, w.thetaC, dir, mats.internals) : buildPDInternals(Ri, w.thetaC, dir, mats.internals));
   }
   add(
-    buildRecessPatch({ surface: 'bore', R: Ri, thetaC: Math.PI, hA: F.pad.halfLength, hB: F.pad.halfWidth, rc: F.pad.corner, margin: patchMargin, depth: F.pad.depth, bevel: F.pad.bevel, floorMark: 1, sOf: sOfBore, L: profile.length }),
+    buildRecessPatch({ surface: 'bore', R: Ri, thetaC: Math.PI, hA: F.pad.halfLength, hB: F.pad.halfWidth, rc: F.pad.corner, margin: patchMargin, depth: F.pad.depth, bevel: F.pad.bevel, floorMark: 1, sOf: sOfBore, L: profile.length, Rf: profile.innerRadiusAt }),
     mats.innerPatch,
     'inner-pad'
   );
   add(
-    buildRecessPatch({ surface: 'outer', R: Ro, thetaC: 0, hA: F.mark.halfLength, hB: F.mark.halfWidth, rc: F.mark.corner, margin: patchMargin, depth: F.mark.depth, bevel: F.mark.bevel, floorMark: 0.5, sOf: sOfOuter, L: profile.length }),
+    buildRecessPatch({ surface: 'outer', R: Ro, thetaC: 0, hA: F.mark.halfLength, hB: F.mark.halfWidth, rc: F.mark.corner, margin: patchMargin, depth: F.mark.depth, bevel: F.mark.bevel, floorMark: 0.5, sOf: sOfOuter, L: profile.length, Rf: profile.outerRadiusAt }),
     mats.outerPatch,
     'orientation-mark'
   );
