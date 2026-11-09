@@ -191,7 +191,9 @@ class InteriorReflectionNode extends Node {
 }
 
 
-// Kehän suuntainen harjausjälki (Brushed Silver): hienoja vaakaviivoja (u = kehä, v = profiili).
+// Harjausjälki (Brushed Silver): virallisissa kuvissa jäljet kulkevat poikittain renkaan leveyden
+// suuntaan (ulkopinnalla akselin suuntaan, sivupinnalla säteittäin). Kanvaasissa pystyviivoja:
+// u = kehä (vaaka), v = profiili (pysty).
 function createBrushTexture(seed = 11) {
   const W = 1024;
   const H = 1024;
@@ -210,10 +212,10 @@ function createBrushTexture(seed = 11) {
     const g = Math.floor(128 + (rnd() - 0.5) * 150);
     ctx.strokeStyle = `rgba(${g},${g},${g},${0.25 + rnd() * 0.5})`;
     ctx.lineWidth = 0.6 + rnd() * 1.1;
-    for (const ox of [-W, 0, W]) {
+    for (const oy of [-H, 0, H]) {
       ctx.beginPath();
-      ctx.moveTo(x + ox, y);
-      ctx.lineTo(x + ox + len, y + (rnd() - 0.5) * 0.8);
+      ctx.moveTo(x, y + oy);
+      ctx.lineTo(x + (rnd() - 0.5) * 0.8, y + oy + len);
       ctx.stroke();
     }
   }
@@ -248,7 +250,7 @@ function patchMaskNode(regions, surfaceRadius, surfaceTol = 0.3) {
   return inside.mul(onSurface).lessThan(0.5);
 }
 
-export function createMaterials({ envTexture, profile, windows, outerPatches, borePatches }) {
+export function createMaterials({ envTexture, profile, windows, outerPatches, borePatches, params }) {
   const micro = createMicroSurfaceTexture();
   const brush = createBrushTexture();
   const noLights = lights([]); // rengas valaistaan studioympäristöllä (IBL); suunnattu valo vain varjolle
@@ -257,7 +259,7 @@ export function createMaterials({ envTexture, profile, windows, outerPatches, bo
   const mark = attribute('mark', 'float');
   const gapA = attribute('gap', 'float');
   const microR = texture(micro, uv()).r;
-  const brushT = texture(brush, uv().mul(vec2(1, 3))).r.sub(0.5);
+  const brushT = texture(brush, uv().mul(vec2(7, 1))).r.sub(0.5);
 
   // --- Ulkokehys: valittava virallinen viimeistely (uniformeilla, ei uudelleenkääntöä) ---
   const fin = {
@@ -277,7 +279,8 @@ export function createMaterials({ envTexture, profile, windows, outerPatches, bo
     rough = rough.add(mark.mul(0.06));
     m.roughnessNode = clamp(rough, 0.035, 0.75);
     m.colorNode = vec3(fin.color).mul(float(1).add(brushT.mul(0.18).mul(fin.brushed)));
-    m.anisotropyNode = vec2(fin.aniso, 0);
+    // anisotropia kehän suuntaan (bitangentti): poikittaiset harjausjäljet venyttävät heijastuksia kehää pitkin
+    m.anisotropyNode = vec2(0, fin.aniso);
     m.aoNode = cavity;
     if (maskRegions) m.maskNode = patchMaskNode(maskRegions, profile.outerRadius);
     return m;
@@ -286,7 +289,7 @@ export function createMaterials({ envTexture, profile, windows, outerPatches, bo
   const outerPatch = makeFrame('Frame patch', null);
 
   // --- Sisäkuori: kiillotettu titaani, keskinäisheijastukset -------------------------
-  const shellF0 = new THREE.Color(0.6, 0.585, 0.56);
+  const shellF0 = new THREE.Color(0.6, 0.6, 0.6); // virallisissa kuvissa titaani on neutraalin harmaa
   const interiorParams = {
     R0: profile.innerRadius,
     wallHalf: profile.halfWidth * 0.62, // soikion reikä kaartuu ylös reunoilla
@@ -318,9 +321,11 @@ export function createMaterials({ envTexture, profile, windows, outerPatches, bo
     roughness: 0.03,
     transmission: 1,
     ior: 1.5,
-    thickness: 0.7,
-    attenuationColor: new THREE.Color(0.96, 0.975, 0.97),
-    attenuationDistance: 3,
+    // pieni paksuusparametri: näytön tilassa taitettu näyte pysyy linssin alla olevassa
+    // vaaleassa alustassa (suuri arvo poimi tumman raon → tumma reunus, ei virallisissa kuvissa)
+    thickness: params?.lensThickness ?? 0.18,
+    attenuationColor: new THREE.Color(0.97, 0.98, 0.975),
+    attenuationDistance: 4,
     specularIntensity: 1,
   });
   lens.lightsNode = noLights;
@@ -357,6 +362,7 @@ export function createMaterials({ envTexture, profile, windows, outerPatches, bo
       iridescenceIOR: 1.9,
       iridescenceThicknessRange: [220, 300],
     }),
+    pdFinger: std('PD finger metallization', { color: new THREE.Color(0.12, 0.125, 0.13), metalness: 1, roughness: 0.55 }),
     aluminium: std('Al metallization', { color: new THREE.Color(0.3, 0.31, 0.32), metalness: 1, roughness: 0.45 }),
     gold: std('Au', { color: new THREE.Color(1.0, 0.766, 0.336), metalness: 1, roughness: 0.2 }),
   };

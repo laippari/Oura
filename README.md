@@ -56,21 +56,35 @@ molemmilla puolilla). Titaaninen sisäosa ja reiän pinta ovat kaikissa väreiss
 - **Sijainnit:** 2 × tri-LED ±34° ja 2 × fotodiodi ±60° keskilinjasta.
 - **Ikkuna:** kirkas, tasakattoinen linssi, kooltaan 3,2 × 3,2 mm ja kulmasäteeltään 0,72 mm.
   Linssin yläreuna on pyöristetty. Linssi on viistereunaisessa upotuksessa, ja sen ympärillä
-  on tumma tiivisterako.
+  on kapea tumma tiivisterako; linssin alla upotuksen pohja on titaania, joten lasin reunat
+  näkyvät kirkkaina kuten virallisissa kuvissa.
 - **Linssien korkeus:** LED 0,78 mm ja fotodiodi 0,60 mm (virallinen kupukorkeus on 0,7 mm).
-- **Tri-LED:** valkoinen keraaminen alusta, vihreä emitterialue isolla sirulla ja kapea
-  punainen/IR-alue, jossa kaksi pientä sirua ristielektrodeineen ja kultaisine bondilankoineen.
-  Punainen alue on keskilinjan puolella.
-- **Fotodiodi:** heijastuksenestopinnoitettu piisiru, hienot metallisormet ja kaksi bondipadia.
+- **Tri-LED:** valkoinen keraaminen alusta, pyöristetty vihreä emitterialue isolla sirulla ja
+  kapea pyöristetty punainen/IR-alue, jossa kaksi pientä sirua ristielektrodeineen ja ohuine
+  bondilankoineen. Punainen alue on keskilinjan puolella.
+- **Fotodiodi:** lähes musta heijastuksenestopinnoitettu piisiru, hyvin hienot tummat
+  metallisormet ja kaksi bondipadia.
+- Komponentit yhdistetään materiaaleittain (34 meshiä 92:n sijaan), mikä vähentää
+  piirtokutsuja mobiililaitteilla.
 
 **Muut yksityiskohdat:**
 - suuntausmerkki ulkopinnalla kämmenen puolella: stadionin muotoinen matala upotus, 3,1 × 1,8 mm
   (lataustelakan tuotekuvasta)
 - sisäpinnan yläosan tasainen levy
 
-**Värit** (metallin F0 kalibroitu virallisia kuvia vasten): Silver, Black, Stealth (mattamusta),
-Brushed Silver (kehän suuntainen harjaus, anisotrooppinen), Gold (vaalea moderni kulta) ja
-Deep Rose (kuparinruusu).
+**Värit** (metallin F0 kalibroitu virallisia kuvia vasten mittaamalla ulkopinnan sävy ja
+kirkkaus samalla kameralla):
+
+| Väri | Huomio |
+| --- | --- |
+| Silver | neutraali peilikiillotus |
+| Black | neutraali kiiltävä musta |
+| Stealth | mattamusta, vaaleampi kuin Black (kuten virallisessa kuvassa) |
+| Brushed Silver | harjausjäljet poikittain renkaan leveyden suuntaan (ulkopinnalla akselin suuntaan); heijastukset venyvät kehää pitkin |
+| Gold | vaalea moderni kulta |
+| Deep Rose | syvä kuparinruusu; sävy (lineaarinen RGB-suhde 1,00 / 0,56 / 0,36) vastaa virallista (1,00 / 0,58 / 0,39) |
+
+Sisäpuolen titaani on neutraalin harmaa kuten virallisissa kuvissa.
 
 ## Miten muoto validoitiin
 
@@ -82,6 +96,8 @@ Deep Rose (kuparinruusu).
      D ≈ 191 mm, f ≈ 24 240 px (3840 px kuvassa). Saumojen syvyydet saadaan projisoimalla
      soikion sivupinnan pisteet tällä kameralla. (Aiempi laatikkomainen profiili antoi
      D ≈ 120 mm; `tools/axial_features.py` käyttää vielä sitä yksinkertaistusta.)
+     `tools/fit_profile.py` sovittaa samoin aiempaa kuori–rengas–sisäosa-profiilia; nykyinen
+     soikio tarkistetaan `tools/compare_silhouette.py`:llä.
    - **Riippumaton tarkistus:** sama tasainen lukitusrenkaan vyö näkyy 43°-kuvan ylä- ja
      alaosassa syvyyksillä 0,99–1,32 ja 0,36–0,74 mm. Niiden keskiarvo 0,675–1,03 mm vastaa
      aksiaalista mittausta (0,695–1,065 mm) 0,03 mm:n tarkkuudella.
@@ -127,6 +143,8 @@ mitat (kokoluokka kuvista) ja saumojen syvyydet. Oura ei julkaise CAD-malleja.
   harmaa horisontti, vaalea pöytä) ja yksi suuri pehmeäreunainen valo ylhäällä. Valo lisätään
   taustan päälle, joten sen reunat eivät heijastu tummina kehyksinä. Kiillotetussa metallissa
   näkyy muutama leveä heijastusvyö. Valaistus esisuodatetaan PMREM-kartaksi.
+  Vaihtoehto `?studio=contrast` käyttää samaa rakennetta tummalla horisontilla: sivupinnat
+  heijastavat tummaa ja yläpinnat kirkasta kuten Ouran tuotekuvissa.
 - **Sisäpinnan heijastukset:** kiillotettu sisäpinta heijastaa vastakkaista seinäänsä. Tämä
   lasketaan sävyttimessä analyyttisesti sylinteriä vasten (3 pomppua, Fresnel jokaisella
   pompulla).
@@ -145,6 +163,8 @@ mitat (kokoluokka kuvista) ja saumojen syvyydet. Oura ei julkaise CAD-malleja.
 | `?match` | virallisen tuotekuvan kamera ja valkoinen tausta (validointi) |
 | `?match&mask` | sama siluettina ääriviivavertailua varten |
 | `?match=axial` | akselin suuntaisen sivukuvan kamera |
+| `?studio=contrast` | tumma horisontti (virallisten tuotekuvien kontrasti) |
+| `?match&crop=x,y,w,h` | vertailunäkymän rajaus lähikuviin (1000 px asteikko) |
 | `?nohq` | ei SSAA:ta |
 | `?rot=x,y,z&zoom=…&pan=x,y,z` | alkunäkymä |
 

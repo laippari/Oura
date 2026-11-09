@@ -6,7 +6,7 @@ import { ssaaPass } from 'three/addons/tsl/display/SSAAPassNode.js';
 import { RING, SENSORS, FEATURES, FINISHES, VIEW } from './config.js';
 import { buildProfile } from './geometry/profile.js';
 import { buildBandGeometry } from './geometry/band.js';
-import { buildRecessPatch, buildLens, buildLEDInternals, buildPDInternals } from './geometry/features.js';
+import { buildRecessPatch, buildLens, buildLEDInternals, buildPDInternals, mergeByMaterial } from './geometry/features.js';
 import { createMaterials } from './materials.js';
 import { createEnvironment, createBackgroundNode, createGround } from './studio.js';
 import { InspectControls } from './controls.js';
@@ -37,7 +37,7 @@ async function main() {
   // --- Näkymä ---------------------------------------------------------------
   const scene = new THREE.Scene();
   scene.backgroundNode = createBackgroundNode();
-  const envTexture = createEnvironment(renderer, params.has('lowenv') ? 256 : 512);
+  const envTexture = createEnvironment(renderer, params.has('lowenv') ? 256 : 512, params.get('studio') === 'contrast' ? 'contrast' : 'soft');
   scene.environment = envTexture;
 
   // --- Malli -----------------------------------------------------------------
@@ -64,7 +64,7 @@ async function main() {
   borePatches.push({ thetaC: Math.PI, R: Ri, zc: 0, hA: F.pad.halfLength, hB: F.pad.halfWidth, rc: F.pad.corner, margin: patchMargin });
   const outerPatches = [{ thetaC: 0, R: Ro, zc: 0, hA: F.mark.halfLength, hB: F.mark.halfWidth, rc: F.mark.corner, margin: patchMargin }];
 
-  const mats = createMaterials({ envTexture, profile, windows, outerPatches, borePatches });
+  const mats = createMaterials({ envTexture, profile, windows, outerPatches, borePatches, params: { lensThickness: params.has('lt') ? Number(params.get('lt')) : undefined } });
 
   const ring = new THREE.Group();
   ring.name = 'Oura Ring 5';
@@ -84,7 +84,7 @@ async function main() {
   };
   for (const w of windows) {
     add(
-      buildRecessPatch({ surface: 'bore', R: Ri, thetaC: w.thetaC, hA: pocketA, hB: pocketB, rc: pocketR, margin: patchMargin, depth: P.depth, bevel: P.bevel, floorGap: 1, sOf: sOfBore, L: profile.length, Rf: profile.innerRadiusAt }),
+      buildRecessPatch({ surface: 'bore', R: Ri, thetaC: w.thetaC, hA: pocketA, hB: pocketB, rc: pocketR, margin: patchMargin, depth: P.depth, bevel: P.bevel, floorGap: 1, gapEnd: P.margin + 0.03, sOf: sOfBore, L: profile.length, Rf: profile.innerRadiusAt }),
       mats.innerPatch,
       w.kind + '-pocket'
     );
@@ -98,7 +98,7 @@ async function main() {
     // dir = suunta kohti fotodiodia u-akselilla (LED) / poispäin keskilinjasta (PD)
     const dir = w.sgn;
     const ku = L.halfLength / 1.9; // komponenttien mitat on annettu 3.8 mm:n ikkunalle
-    ring.add(isLED ? buildLEDInternals(Ri, w.thetaC, dir, mats.internals, ku) : buildPDInternals(Ri, w.thetaC, dir, mats.internals, ku));
+    ring.add(mergeByMaterial(isLED ? buildLEDInternals(Ri, w.thetaC, dir, mats.internals, ku) : buildPDInternals(Ri, w.thetaC, dir, mats.internals, ku)));
   }
   add(
     buildRecessPatch({ surface: 'bore', R: Ri, thetaC: Math.PI, hA: F.pad.halfLength, hB: F.pad.halfWidth, rc: F.pad.corner, margin: patchMargin, depth: F.pad.depth, bevel: F.pad.bevel, floorMark: 1, sOf: sOfBore, L: profile.length, Rf: profile.innerRadiusAt }),
@@ -166,8 +166,11 @@ async function main() {
       camera.lookAt(0, 0, 0);
       camera.near = MATCH.near;
       camera.far = MATCH.far;
-      // kuvakeskipisteen siirto (sovituksen cx, cy 1000 px kuvassa) – ei sormuksen siirtoa 3D:ssä
-      camera.setViewOffset(1000, 1000, MATCH.offset[0], MATCH.offset[1], 1000, 1000);
+      // kuvakeskipisteen siirto (sovituksen cx, cy 1000 px kuvassa) – ei sormuksen siirtoa 3D:ssä.
+      // ?crop=x,y,w,h rajaa saman näkymän (1000 px asteikko) lähikuvavertailuja varten.
+      const [cx0, cy0, cw, ch] = params.has('crop') ? params.get('crop').split(',').map(Number) : [0, 0, 1000, 1000];
+      camera.aspect = 1;
+      camera.setViewOffset(1000, 1000, MATCH.offset[0] + cx0, MATCH.offset[1] + cy0, cw, ch);
       camera.updateProjectionMatrix();
       return;
     }

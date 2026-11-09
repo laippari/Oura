@@ -27,8 +27,12 @@ function aim(obj, x, y, z, target = new THREE.Vector3()) {
   return obj;
 }
 
-export function buildStudioScene() {
+// variant 'soft' (oletus): harmaa horisontti, matala kontrasti.
+// variant 'contrast': sama rakenne, mutta tumma horisontti kuten Ouran tuotekuvissa (sivupinnat
+// heijastavat tummaa, yläpinnat kirkasta) – yhä vain liukuväri ja yksi valo.
+export function buildStudioScene(variant = 'soft') {
   const scene = new THREE.Scene();
+  const hi = variant === 'contrast';
 
   // Yksinkertainen valaistus: pehmeä pystysuuntainen liukuväri (kirkas yläpuoli → harmaa
   // horisontti → vaalea pöytä) ja yksi suuri, pehmeäreunainen yläpuolinen valo. Kiillotetussa
@@ -36,11 +40,11 @@ export function buildStudioScene() {
   const domeMat = new THREE.MeshBasicNodeMaterial({ side: THREE.BackSide });
   const dirY = positionWorld.normalize().y;
   const zenith = vec3(1.0, 1.0, 1.0);
-  const horizon = vec3(0.3, 0.3, 0.305);
-  const below = vec3(0.2, 0.198, 0.196);
+  const horizon = hi ? vec3(0.03, 0.03, 0.031) : vec3(0.3, 0.3, 0.305);
+  const below = hi ? vec3(0.05, 0.05, 0.05) : vec3(0.2, 0.198, 0.196);
   const table = vec3(0.6, 0.595, 0.59);
-  const up = mix(horizon, zenith, smoothstep(0.0, 0.85, dirY));
-  const low = mix(below, table, smoothstep(0.15, 0.7, dirY.negate()));
+  const up = mix(horizon, zenith, hi ? smoothstep(0.12, 0.5, dirY) : smoothstep(0.0, 0.85, dirY));
+  const low = mix(below, table, hi ? smoothstep(0.05, 0.45, dirY.negate()) : smoothstep(0.15, 0.7, dirY.negate()));
   domeMat.colorNode = select(dirY.greaterThanEqual(0), up, low);
   scene.add(new THREE.Mesh(new THREE.SphereGeometry(40, 96, 48), domeMat));
 
@@ -50,9 +54,9 @@ export function buildStudioScene() {
   return scene;
 }
 
-export function createEnvironment(renderer, size = 512) {
+export function createEnvironment(renderer, size = 512, variant = 'soft') {
   const pmrem = new THREE.PMREMGenerator(renderer);
-  const studio = buildStudioScene();
+  const studio = buildStudioScene(variant);
   const rt = pmrem.fromScene(studio, 0, 0.1, 100, { size });
   studio.traverse((o) => {
     if (o.isMesh) {

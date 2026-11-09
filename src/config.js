@@ -53,12 +53,12 @@ export const FEATURES = {
 // Viralliset värivaihtoehdot. Ulkokehys saa värin, sisäkuori on aina luonnonvärinen titaani.
 // F0 = metallin heijastusväri lineaarisena sRGB:nä (kalibroitu virallisia kuvia vasten).
 export const FINISHES = [
-  { id: 'silver', name: 'Silver', f0: [0.64, 0.63, 0.61], roughness: 0.055, aniso: 0, brushed: 0, swatch: ['#f4f4f4', '#9a9a9a'] },
-  { id: 'black', name: 'Black', f0: [0.042, 0.042, 0.045], roughness: 0.06, aniso: 0, brushed: 0, swatch: ['#5a5a5c', '#0c0c0d'] },
-  { id: 'stealth', name: 'Stealth', f0: [0.075, 0.075, 0.078], roughness: 0.45, aniso: 0, brushed: 0, bead: 1, swatch: ['#3a3a3b', '#1d1d1e'] },
-  { id: 'brushed-silver', name: 'Brushed Silver', f0: [0.63, 0.62, 0.605], roughness: 0.27, aniso: 0, brushed: 1, swatch: ['#e2e2e2', '#a8a8a8'] },
+  { id: 'silver', name: 'Silver', f0: [0.64, 0.64, 0.64], roughness: 0.055, aniso: 0, brushed: 0, swatch: ['#f4f4f4', '#9a9a9a'] },
+  { id: 'black', name: 'Black', f0: [0.045, 0.045, 0.045], roughness: 0.06, aniso: 0, brushed: 0, swatch: ['#5a5a5c', '#0c0c0d'] },
+  { id: 'stealth', name: 'Stealth', f0: [0.17, 0.17, 0.17], roughness: 0.5, aniso: 0, brushed: 0, bead: 1, swatch: ['#3a3a3b', '#1d1d1e'] },
+  { id: 'brushed-silver', name: 'Brushed Silver', f0: [0.66, 0.66, 0.66], roughness: 0.2, aniso: 0.5, brushed: 1, swatch: ['#e2e2e2', '#a8a8a8'] },
   { id: 'gold', name: 'Gold', f0: [0.9, 0.78, 0.56], roughness: 0.055, aniso: 0, brushed: 0, swatch: ['#f3e6c8', '#b89a62'] },
-  { id: 'deep-rose', name: 'Deep Rose', f0: [0.79, 0.555, 0.45], roughness: 0.055, aniso: 0, brushed: 0, swatch: ['#efcdb9', '#8f5a45'] },
+  { id: 'deep-rose', name: 'Deep Rose', f0: [0.78, 0.45, 0.3], roughness: 0.055, aniso: 0, brushed: 0, swatch: ['#efcdb9', '#8f5a45'] },
 ];
 
 export const VIEW = {

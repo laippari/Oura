@@ -1,5 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 // Paikalliset pinnan yksityiskohdat, mitattu virallisista tuotekuvista:
 //  • neljä sensori-ikkunaa sisäpinnalla (2 × tri-LED ±34°, 2 × fotodiodi ±60°):
@@ -122,6 +123,11 @@ export function buildRecessPatch(o) {
   offs.push(-bevel - 0.01, -bevel - 0.03, -bevel - 0.08);
   const floorStart = -bevel - 0.08;
   for (let k = 1; k <= 5; k++) offs.push(floorStart + (dmin - floorStart) * Math.pow(k / 5, 0.8));
+  // tumma tiivisterako vain kapeana renkaana upotuksen reunan ja linssin välissä (gapIn..gapOut)
+  const gapOut = -(o.gapEnd ?? bevel + 0.08); // raon ulkoraja (offset upotuksen reunasta, linssin reuna + rako)
+  if (floorGap) offs.push(gapOut, gapOut - 0.02, gapOut - 0.04, gapOut - 0.08);
+  offs.sort((a, b) => b - a);
+  for (let i = offs.length - 1; i > 0; i--) if (Math.abs(offs[i] - offs[i - 1]) < 1e-6) offs.splice(i, 1);
   const depthAt = (d) => (d >= 0 ? 0 : d <= -bevel ? depth : depth * (0.5 - 0.5 * Math.cos(Math.PI * (-d / bevel))));
   const slopeAt = (d) => (d >= 0 || d <= -bevel ? 0 : -depth * 0.5 * Math.PI * Math.sin(Math.PI * (-d / bevel)) / bevel);
 
@@ -142,9 +148,10 @@ export function buildRecessPatch(o) {
       uvs.push((m.th + Math.PI) / TAU - Math.floor((m.th + Math.PI) / TAU), sOf(zc + c.v) / L);
       tan.push(0, 0, 1, 1);
       const t = Math.min(1, Math.max(0, (-d - bevel * 0.5) / (bevel * 0.5)));
+      const tOut = Math.min(1, Math.max(0, (d - (gapOut - 0.04)) / 0.04)); // 1 raossa, 0 linssin alla
       cav.push(1 - 0.35 * (dep / depth));
       mk.push(floorMark * t);
-      gp.push(floorGap * t);
+      gp.push(floorGap * t * tOut);
     }
   }
   ringIndices(offs.length, nPer, idx);
@@ -206,6 +213,25 @@ function placeOnBore(group, obj, R, thetaC, u, v, h, ku = 1) {
   group.add(obj);
 }
 
+// Pyöristetty litteä levy (paksuus y-suunnassa), esim. LEDin emitterialueet
+function roundedSlab(w, d, h, r) {
+  const sh = new THREE.Shape();
+  const x0 = -w / 2, y0 = -d / 2;
+  sh.moveTo(x0 + r, y0);
+  sh.lineTo(x0 + w - r, y0);
+  sh.quadraticCurveTo(x0 + w, y0, x0 + w, y0 + r);
+  sh.lineTo(x0 + w, y0 + d - r);
+  sh.quadraticCurveTo(x0 + w, y0 + d, x0 + w - r, y0 + d);
+  sh.lineTo(x0 + r, y0 + d);
+  sh.quadraticCurveTo(x0, y0 + d, x0, y0 + d - r);
+  sh.lineTo(x0, y0 + r);
+  sh.quadraticCurveTo(x0, y0, x0 + r, y0);
+  const g = new THREE.ExtrudeGeometry(sh, { depth: h, bevelEnabled: false, curveSegments: 10 });
+  g.rotateX(-Math.PI / 2);
+  g.translate(0, -h / 2, 0);
+  return g;
+}
+
 function wire(points, radius, mat) {
   const curve = new THREE.CatmullRomCurve3(points.map((p) => new THREE.Vector3(...p)));
   return new THREE.Mesh(new THREE.TubeGeometry(curve, 24, radius, 6, false), mat);
@@ -222,6 +248,25 @@ function crossElectrode(size, mat) {
   return g;
 }
 
+// Yhdistää ryhmän staattiset osat materiaaleittain (vähemmän piirtokutsuja mobiilissa).
+export function mergeByMaterial(group) {
+  group.updateMatrixWorld(true);
+  const inv = new THREE.Matrix4().copy(group.matrixWorld).invert();
+  const byMat = new Map();
+  group.traverse((o) => {
+    if (!o.isMesh) return;
+    let g = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone();
+    for (const name of Object.keys(g.attributes)) if (name !== 'position' && name !== 'normal') g.deleteAttribute(name);
+    g.applyMatrix4(new THREE.Matrix4().multiplyMatrices(inv, o.matrixWorld));
+    if (!byMat.has(o.material)) byMat.set(o.material, []);
+    byMat.get(o.material).push(g);
+  });
+  const out = new THREE.Group();
+  out.name = group.name;
+  for (const [mat, geos] of byMat) out.add(new THREE.Mesh(mergeGeometries(geos), mat));
+  return out;
+}
+
 // Tri-LED: valkoinen keraaminen alusta, vihreä emitteri (iso siru) sekä kapea punainen/IR-alue,
 // jossa kaksi pientä sirua ristielektrodeineen. dir = suunta kohti fotodiodia (u-akselilla).
 export function buildLEDInternals(R, thetaC, dir, mats, ku = 1) {
@@ -234,7 +279,7 @@ export function buildLEDInternals(R, thetaC, dir, mats, ku = 1) {
   placeOnBore(group, sub, R, thetaC, 0, 0, 0, ku);
 
   // vihreä emitterialue (läpikuultava silikoni) ja siru
-  const gz = new THREE.Mesh(new RoundedBoxGeometry(1.24, 0.03, 1.62, 2, 0.012), mats.greenZone);
+  const gz = new THREE.Mesh(roundedSlab(1.24, 1.62, 0.03, 0.2), mats.greenZone);
   gz.position.set(dir * 0.42, top + 0.012, 0);
   placeOnBore(group, gz, R, thetaC, 0, 0, 0, ku);
   const gd = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.08, 0.6), mats.dieGreen);
@@ -250,13 +295,13 @@ export function buildLEDInternals(R, thetaC, dir, mats, ku = 1) {
       [dir * 0.7, top + 0.2, -0.55],
       [dir * 0.78, top + 0.02, -0.7],
     ],
-    0.009,
+    0.006,
     mats.gold
   );
   placeOnBore(group, gw, R, thetaC, 0, 0, 0, ku);
 
   // punainen + IR -alue: kaksi pientä sirua ristielektrodeilla
-  const rz = new THREE.Mesh(new RoundedBoxGeometry(0.56, 0.03, 1.48, 2, 0.012), mats.redZone);
+  const rz = new THREE.Mesh(roundedSlab(0.56, 1.48, 0.03, 0.14), mats.redZone);
   rz.position.set(-dir * 0.66, top + 0.012, 0.02);
   placeOnBore(group, rz, R, thetaC, 0, 0, 0, ku);
   const dies = [mats.dieRed, mats.dieIR];
@@ -265,7 +310,7 @@ export function buildLEDInternals(R, thetaC, dir, mats, ku = 1) {
     const d = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.07, 0.3), dies[i]);
     d.position.set(-dir * 0.66, top + 0.06, vz);
     placeOnBore(group, d, R, thetaC, 0, 0, 0, ku);
-    const x = crossElectrode(0.22, mats.gold);
+    const x = crossElectrode(0.17, mats.aluminium);
     x.position.set(-dir * 0.66, top + 0.1, vz);
     placeOnBore(group, x, R, thetaC, 0, 0, 0, ku);
     const w = wire(
@@ -275,7 +320,7 @@ export function buildLEDInternals(R, thetaC, dir, mats, ku = 1) {
         [-dir * 0.98, top + 0.16, vz + 0.08],
         [-dir * 1.1, top + 0.01, vz + 0.1],
       ],
-      0.008,
+      0.0055,
       mats.gold
     );
     placeOnBore(group, w, R, thetaC, 0, 0, 0, ku);
@@ -297,7 +342,7 @@ export function buildPDInternals(R, thetaC, dir, mats, ku = 1) {
   placeOnBore(group, si, R, thetaC, 0, 0, 0, ku);
   const n = 13;
   for (let i = 0; i < n; i++) {
-    const f = new THREE.Mesh(new THREE.BoxGeometry(0.014, 0.006, 2.1), mats.aluminium);
+    const f = new THREE.Mesh(new THREE.BoxGeometry(0.007, 0.004, 2.1), mats.pdFinger);
     f.position.set(-1.2 + (2.4 * i) / (n - 1), top + 0.022, 0);
     placeOnBore(group, f, R, thetaC, 0, 0, 0, ku);
   }
