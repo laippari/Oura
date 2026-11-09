@@ -13,25 +13,18 @@
 export const RING = {
   width: 6.09,
   thickness: 2.28,
-  innerRadius: 10.945,
+  innerRadius: 10.938,
 
-  // Poikkileikkaus ulkoa sisään (säteittäiset mitat sivupinnalla, yhteensä 2.28 mm)
-  // Ulkoreunan muoto sovitettu virallisen 8000 px tuotekuvan ääriviivaan (tools/fit_profile.py):
-  // ulkopinta kaartuu reunoilla isolla säteellä R1 kulman phi verran ja kohtaa sivupinnan
-  // lähes terävällä reunalla R2. Ääriviivavirhe: keskimäärin 0.009 mm, 95 % < 0.015 mm.
-  outerCorner: { R1: 2.7, R2: 0.05, phiDeg: 24.5 },
-  pvdSeamFromOuter: 0.55, // värillisen reunarenkaan ja titaanin raja sivupinnalla (säde ulkopinnasta)
-  creaseFromOuter: 0.95, // terävän reunalinjan paikka (säde ulkopinnasta)
-  creaseRadius: 0.05, // terävä reunalinja tasaisen pinnan ja viisteen välissä
-  cove: 0.68, // viiste kohti saumaa
-  coveRecess: 0.2, // viisteen sisäreunan syvyys sivupinnasta
-  coveBulge: 0.05,
-  gap: 0.16, // ulkokehyksen ja sisäkuoren välinen sauma
-  gapDepth: 0.24,
-  // Sisäreuna sovitettu ääriviivaan: sisäpinta päättyy ~0.2 mm sivupinnan tasosta.
-  lipRecess: 0.11, // sisäkuoren tasaisen reunuksen syvyys sivupinnan tasosta
-  lipChamfer: 0.085, // 45° reunaviiste sisäpinnan ja reunuksen välissä
-  lipEdge: 0.03, // viisteen reunojen pyöristys
+  // Sivupinnan rakenne (säteittäiset mitat ulkopinnasta, mm) – mitattu aksiaalisista
+  // tuotekuvista (tools/axial_features.py), muoto 43°-kuvan ääriviivasta (tools/fit_profile.py).
+  // Kuoren reuna: kaarevuus kasvaa tasaisesti (theta ~ s^(ramp+1)) 1.22 mm:n matkalla ja päättyy
+  // sivupinnan tasoon pyöreästi (loppusäde ≈ 0.34 mm). Sovitettu 43°-kuvan ääriviivaan (tools/fit_profile.py).
+  corner: { drop: 0.515, ramp: 1.8, endAngleDeg: 90, recess: 0.0 },
+  shellGap: { shellWall: 0.545, depth: 0.12, edge: 0.03 }, // rako kuoren ja lukitusrenkaan välissä
+  lockingRing: { outer: 0.61, inner: 1.11, recess: 0.0, outerEdge: 0.085, innerEdge: 0.04 },
+  seam: { depth: 0.12 }, // sauma lukitusrenkaan ja titaanisen sisäosan välissä
+  // Titaaninen sisäosa: pyöreä reuna sivupinnan tasosta (korkeus reiän pinnasta) reiän pintaan
+  innerEdge: { height: 1.09, edgeRadius: 0.08, edgeInset: 0.024, recess: 0.1, topEdge: 0.03 },
 
   angularSegments: 480,
   profileMaxStep: 0.06,

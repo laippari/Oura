@@ -1,50 +1,56 @@
 // Renkaan poikkileikkausprofiili (z = akselin suunta, r = säde).
 //
-// Mitattu virallisista tuotekuvista (ks. README). Sivupinnan rakenne ulkoa sisään:
-//   tasainen ulkopinta ─ loiva kaksikaarinen reuna (R1 ≈ 2.7 mm → R2 ≈ 0.05 mm) ─ tasainen sivupinta ─ terävä reunalinja ─
-//   loiva viiste ─ sauma (ura) ─ sisäkuoren reunus ─ pieni pyöristys ─ tasainen sisäpinta.
-// Värillinen PVD-ulkokehys kattaa ulkopinnan, ulkoreunan pyöristyksen ja kapean reunarenkaan
-// sivupinnalla (raja on ohut sauma; purkukuvassa erilliset ohuet reunarenkaat);
-// sivupinta, viiste, ura ja sisäpinta ovat sisäkuoren titaania kaikissa väreissä
-// (näkyy selvästi virallisissa Black-, Gold- ja Deep Rose -kuvissa).
+// Rakenne (Ouran purkukuva + aksiaaliset tuotekuvat), sivupinnalla ulkoa sisään:
+//   värillinen kuori: tasainen ulkopinta, jonka reuna kaartuu kaarevuuden kasvaessa tasaisesti
+//     (G2-jatkuva alku, pyöreä loppu) 0.515 mm:n syvyyteen; kuoren pää jää lukitusrenkaan
+//     pinnan tason sisäpuolelle
+//   kapea rako
+//   värillinen ohut lukitusrengas (tasainen pinta, pyöristetyt reunat) – sormuksen levein kohta
+//   sauma
+//   titaaninen sisäosa: pyöreäreunainen, kaartuu sivupinnalta reiän pinnaksi
+// Mitat: säteittäiset rajat aksiaalikuvasta (perspektiivikamera ratkaistu reiän reunasta,
+// lähireunan peittorajasta ja ulkoreunasta), muoto 43°-tuotekuvan ääriviivasta
+// (tools/fit_profile.py, tools/axial_features.py).
 //
-// Profiili rakennetaan oikeasta puolikkaasta (z ≥ 0) janoista, kaarista ja Bézier-käyristä,
-// peilataan ja näytteistetään adaptiivisesti. Kierto on vastapäivään (z vaaka, r pysty),
-// joten ulkonormaali on (dr, -dz).
+// Profiili rakennetaan oikeasta puolikkaasta (z ≥ 0), peilataan ja näytteistetään
+// adaptiivisesti. Kierto on vastapäivään (z vaaka, r pysty), joten ulkonormaali on (dr, -dz).
+
+// Kuoren reuna: normaalin kääntymiskulma theta(u) = Phi * u^(ramp+1) kaarenpituuden suhteen (u = s/S).
+// Kaarevuus kasvaa tasaisesti nollasta (G2-liitos ulkopintaan). Kun Phi > 90°, reuna kaartuu
+// levein kohdan ohi takaisin sisäänpäin (täysin pyöreä reuna) ja päättyy säteittäiseen syvyyteen drop.
+export function cornerCurve(ramp, drop, endAngleDeg = 90, k = 400) {
+  const Phi = (endAngleDeg * Math.PI) / 180;
+  const M = 20000;
+  const z = new Float64Array(M + 1);
+  const d = new Float64Array(M + 1);
+  for (let i = 1; i <= M; i++) {
+    const t0 = Phi * Math.pow((i - 1) / M, ramp + 1);
+    const t1 = Phi * Math.pow(i / M, ramp + 1);
+    z[i] = z[i - 1] + (0.5 * (Math.cos(t0) + Math.cos(t1))) / M;
+    d[i] = d[i - 1] + (0.5 * (Math.sin(t0) + Math.sin(t1))) / M;
+  }
+  const S = drop / d[M];
+  const pts = [];
+  let iMax = 0;
+  for (let j = 0; j <= k; j++) {
+    const i = Math.round((j / k) * M);
+    pts.push([z[i] * S, -d[i] * S]);
+    if (pts[j][0] > pts[iMax][0]) iMax = j;
+  }
+  return { pts, iMax, zMax: pts[iMax][0], depthAtMax: -pts[iMax][1], arcLength: S, endRadius: S / ((ramp + 1) * Phi) };
+}
 
 export function buildProfile(cfg) {
   const a = cfg.width / 2;
   const Ri = cfg.innerRadius;
   const Ro = Ri + cfg.thickness;
+  const C = cfg.corner;
+  const G = cfg.shellGap;
+  const LR = cfg.lockingRing;
+  const SM = cfg.seam;
+  const F = cfg.innerEdge;
 
-  // Ulkoreunan kulma: kaksi tangentiaalista kaarta (iso "roll-off" R1 kulmassa phi, sitten pieni R2
-  // sivupintaan). Parametrit sovitettu virallisen tuotekuvan ääriviivaan (tools/fit_profile.py).
-  const { R1, R2, phiDeg } = cfg.outerCorner;
-  const phi = (phiDeg * Math.PI) / 180;
-  const cornerPts = [];
-  {
-    const k1 = 160;
-    const k2 = 120;
-    for (let i = 0; i <= k1; i++) {
-      const al = (phi * i) / k1;
-      cornerPts.push([R1 * Math.sin(al), -R1 * (1 - Math.cos(al))]);
-    }
-    const [z0, r0] = cornerPts[cornerPts.length - 1];
-    for (let i = 1; i <= k2; i++) {
-      const al = phi + ((Math.PI / 2 - phi) * i) / k2;
-      cornerPts.push([z0 + R2 * (Math.sin(al) - Math.sin(phi)), r0 - R2 * (Math.cos(phi) - Math.cos(al))]);
-    }
-  }
-  const cornerAxial = cornerPts[cornerPts.length - 1][0];
-  const cornerRadial = -cornerPts[cornerPts.length - 1][1];
-  const rFilletStart = Ro - cornerRadial;
-  const rCrease = Ro - cfg.creaseFromOuter;
-  const rCoveBottom = rCrease - cfg.cove;
-  const rLipTop = rCoveBottom - cfg.gap;
-  const zLip = a - cfg.lipRecess;
-  const zGroove = zLip - cfg.gapDepth;
-  const zCoveIn = a - cfg.coveRecess;
-  const e = cfg.lipEdge;
+  const corner = cornerCurve(C.ramp, C.drop, C.endAngleDeg);
 
   // --- Oikea puolikas tiheänä polylinjana ------------------------------------
   const pts = []; // [z, r, region, cavity]
@@ -57,67 +63,75 @@ export function buildProfile(cfg) {
       push(z0 + (z1 - z0) * t, r0 + (r1 - r0) * t, region, cav0 + (cav1 - cav0) * t);
     }
   };
-  const arc = (cz, cr, rad, a0, a1, region) => {
-    const n = Math.max(4, Math.ceil((Math.abs(a1 - a0) * rad) / step));
-    for (let i = 0; i < n; i++) {
-      const t = a0 + ((a1 - a0) * i) / n;
-      push(cz + rad * Math.cos(t), cr + rad * Math.sin(t), region);
-    }
-  };
-  const bez = (p0, p1, p2, region, cav = 1) => {
-    const n = 4000;
+  // pyöristys kahden suoran välillä (neliöllinen Bézier, kontrollipiste kulmassa)
+  const round = (p0, c, p1, region, cav0 = 1, cav1 = cav0) => {
+    const n = 600;
     for (let i = 0; i < n; i++) {
       const t = i / n;
       const u = 1 - t;
-      push(u * u * p0[0] + 2 * u * t * p1[0] + t * t * p2[0], u * u * p0[1] + 2 * u * t * p1[1] + t * t * p2[1], region, cav);
+      push(u * u * p0[0] + 2 * u * t * c[0] + t * t * p1[0], u * u * p0[1] + 2 * u * t * c[1] + t * t * p1[1], region, cav0 + (cav1 - cav0) * t);
     }
   };
-  const corner = (p0, c, p1, region, cav = 1) => bez(p0, c, p1, region, cav);
 
-  const cs = 0.012; // pienet särmäpyöristykset uran nurkissa
-  // 1) sisäpinta keskeltä reunaan (ääriviivasovituksen mukaan sisäpinta päättyy ~0.2 mm sivusta)
-  const ch = cfg.lipChamfer;
-  line(0, Ri, zLip - ch - e, Ri, 'shell');
-  // 2) pieni pyöristys + 45° reunaviiste
-  corner([zLip - ch - e, Ri], [zLip - ch, Ri], [zLip - ch + e * 0.7, Ri + e * 0.7], 'shell');
-  line(zLip - ch + e * 0.7, Ri + e * 0.7, zLip - e * 0.3, Ri + ch - e * 0.3, 'shell');
-  corner([zLip - e * 0.3, Ri + ch - e * 0.3], [zLip, Ri + ch], [zLip, Ri + ch + e], 'shell');
-  // 3) sisäkuoren tasainen reunus (hieman sivupinnan tason alapuolella) ylös uraan asti
-  line(zLip, Ri + ch + e, zLip, rLipTop - cs, 'shell');
-  // 4) ura: sisäänpäin, pohjan yli, takaisin ulos
-  corner([zLip, rLipTop - cs], [zLip, rLipTop], [zLip - cs, rLipTop], 'shell', 0.75);
-  line(zLip - cs, rLipTop, zGroove + cs, rLipTop, 'shell', 0.6, 0.25);
-  corner([zGroove + cs, rLipTop], [zGroove, rLipTop], [zGroove, rLipTop + cs], 'shell', 0.2);
-  const rMid = (rLipTop + rCoveBottom) / 2;
-  line(zGroove, rLipTop + cs, zGroove, rMid, 'shell', 0.15, 0.12);
-  line(zGroove, rMid, zGroove, rCoveBottom - cs, 'shell', 0.12, 0.15);
-  corner([zGroove, rCoveBottom - cs], [zGroove, rCoveBottom], [zGroove + cs, rCoveBottom], 'shell', 0.2);
-  line(zGroove + cs, rCoveBottom, zCoveIn - cs, rCoveBottom, 'shell', 0.25, 0.65);
-  corner([zCoveIn - cs, rCoveBottom], [zCoveIn, rCoveBottom], [zCoveIn + cs * 0.3, rCoveBottom + cs], 'shell', 0.85);
-  // 5) viiste: loivasti kupera Bézier
-  const c0 = [zCoveIn + cs * 0.3, rCoveBottom + cs];
-  const c2 = [a - 0.012, rCrease - 0.035];
-  const dz = c2[0] - c0[0];
-  const dr = c2[1] - c0[1];
-  const dl = Math.hypot(dz, dr);
-  const bulge = cfg.coveBulge;
-  const c1 = [(c0[0] + c2[0]) / 2 + (dr / dl) * bulge * 2, (c0[1] + c2[1]) / 2 - (dz / dl) * bulge * 2];
-  bez(c0, c1, c2, 'shell');
-  // 6) terävä reunalinja (pieni pyöristys) ja tasainen sivupinta (titaania)
-  corner(c2, [a, rCrease], [a, rCrease + cfg.creaseRadius], 'shell');
-  const sw = 0.014; // sauma värillisen ulkokehyksen ja titaanin välissä
-  const sd = 0.016;
-  const rSeam = Ro - cfg.pvdSeamFromOuter;
-  line(a, rCrease + cfg.creaseRadius, a, rSeam - sw, 'shell');
-  line(a, rSeam - sw, a - sd, rSeam - 0.003, 'shell', 1, 0.35);
-  line(a - sd, rSeam - 0.003, a - sd, rSeam + 0.003, 'frame', 0.3, 0.3);
-  line(a - sd, rSeam + 0.003, a, rSeam + sw, 'frame', 0.35, 1);
-  // värillinen reunarengas sivupinnalla kulman alkuun asti
-  line(a, rSeam + sw, a, rFilletStart, 'frame');
-  // 7) ulkoreunan kaksikaarinen pyöristys (sivupinnalta ulkopinnalle) ja ulkopinta
-  const zc0 = a - cornerAxial;
-  for (let i = cornerPts.length - 1; i >= 0; i--) {
-    const [dz, dr] = cornerPts[i];
+  // 1) reiän pinta keskeltä sisäosan reunan pyöristykseen
+  //    Ääriviiva vaatii reiän pinnan ulottuvan ~0.07 mm:n päähän sivupinnan tasosta, joten reunan
+  //    pyöristyssäde on enintään ~0.09 mm (tukifunktioehto); pinta sen yläpuolella on loivasti kupera.
+  const rho = F.edgeRadius;
+  const zEdgeC = a - F.edgeInset - rho; // pyöristyksen keskipiste (z)
+  line(0, Ri, zEdgeC, Ri, 'shell');
+  // 2) pyöristys reiän pinnasta sivupinnalle (neljännesympyrä)
+  {
+    const M = 240;
+    for (let i = 0; i < M; i++) {
+      const t = -Math.PI / 2 + (Math.PI / 2) * (i / M);
+      push(zEdgeC + rho * Math.cos(t), Ri + rho + rho * Math.sin(t), 'shell');
+    }
+  }
+  //    ja loivasti kupera pinta ylös saumaan (alkaa pystysuorana, kallistuu hieman sisään)
+  {
+    const p0 = [zEdgeC + rho, Ri + rho];
+    const c = [zEdgeC + rho, Ri + rho + (F.height - rho) * 0.45];
+    const p1 = [a - F.recess, Ri + F.height];
+    const M = 1200;
+    for (let i = 0; i < M; i++) {
+      const t = i / M;
+      const u = 1 - t;
+      push(u * u * p0[0] + 2 * u * t * c[0] + t * t * p1[0], u * u * p0[1] + 2 * u * t * c[1] + t * t * p1[1], 'shell');
+    }
+  }
+  // 3) sisäosan yläreunan pieni pyöristys ja sauma lukitusrenkaaseen
+  const zF = a - F.recess;
+  const rF = Ri + F.height;
+  const rS0 = rF + F.topEdge; // sauman sisäseinä
+  const rS1 = Ro - LR.inner; // sauman ulkoseinä = lukitusrenkaan sisäreuna
+  const zSm = a - SM.depth;
+  round([zF, rF], [zF, rS0], [zF - F.topEdge, rS0], 'shell', 1, 0.6);
+  line(zF - F.topEdge, rS0, zSm, rS0, 'shell', 0.6, 0.15);
+  line(zSm, rS0, zSm, (rS0 + rS1) / 2, 'shell', 0.12, 0.1);
+  line(zSm, (rS0 + rS1) / 2, zSm, rS1, 'frame', 0.1, 0.12);
+  // 4) lukitusrengas – sormuksen levein kohta (pinta z = a): sisäreunan pyöristys, tasainen pinta,
+  //    ulkoreunan pyöristys alas renkaan ulkoseinälle
+  const zL = a - LR.recess;
+  line(zSm, rS1, zL - LR.innerEdge, rS1, 'frame', 0.15, 0.6);
+  round([zL - LR.innerEdge, rS1], [zL, rS1], [zL, rS1 + LR.innerEdge], 'frame', 0.6, 1);
+  const rLout = Ro - LR.outer;
+  line(zL, rS1 + LR.innerEdge, zL, rLout - LR.outerEdge, 'frame');
+  round([zL, rLout - LR.outerEdge], [zL, rLout], [zL - LR.outerEdge, rLout], 'frame', 1, 0.7);
+  // 5) rako lukitusrenkaan ja kuoren välissä
+  const zShellMax = a - C.recess; // kuoren levein kohta
+  const zc0 = zShellMax - corner.zMax; // kulman alku ulkopinnalla
+  const endPt = corner.pts[corner.pts.length - 1];
+  const zShellEnd = zc0 + endPt[0];
+  const zG = Math.min(zShellEnd, zL - LR.outerEdge) - G.depth;
+  const rGs = Ro - G.shellWall; // kuoren puoleinen seinä
+  line(zL - LR.outerEdge, rLout, zG, rLout, 'frame', 0.7, 0.12);
+  line(zG, rLout, zG, rGs, 'frame', 0.1, 0.1);
+  line(zG, rGs, zShellEnd - G.edge, rGs, 'frame', 0.12, 0.6);
+  // kuoren pään pieni pyöristys kulmakaaren loppuun
+  round([zShellEnd - G.edge, rGs], [zShellEnd, rGs], [zShellEnd, Ro - C.drop], 'frame', 0.6, 1);
+  // 6) kuoren pyöreä reuna (käännetty: päästä ulkopinnalle) ja ulkopinta
+  for (let i = corner.pts.length - 1; i >= 0; i--) {
+    const [dz, dr] = corner.pts[i];
     const prev = pts[pts.length - 1];
     line(prev[0], prev[1], zc0 + dz, Ro + dr, 'frame');
   }
@@ -160,9 +174,9 @@ export function buildProfile(cfg) {
   for (let i = 1; i < N - 1; i++) {
     const t = tangentAt(i);
     const turn = Math.acos(Math.min(1, Math.max(-1, t[0] * lastT[0] + t[1] * lastT[1])));
-    // tiheämpi näytteistys pienissä yksityiskohdissa (ura, reunalinja)
-    const fine = loop[i][1] < rCrease + 0.08 && loop[i][1] > rLipTop - 0.03 && Math.abs(loop[i][0]) > zGroove - 0.03;
-    const lim = fine ? Math.min(maxStep, 0.03) : maxStep;
+    // tiheämpi näytteistys sivupinnan pienissä yksityiskohdissa (sauma, lukitusrengas, rako)
+    const fine = Math.abs(loop[i][0]) > a - 0.2 && loop[i][1] > rF - 0.05 && loop[i][1] < Ro - C.drop + 0.02;
+    const lim = fine ? Math.min(maxStep, 0.01) : maxStep;
     const dS = ds[i] - lastS;
     if (dS >= lim || (turn >= maxTurn && dS >= 0.004)) {
       picked.push(i);
@@ -186,8 +200,8 @@ export function buildProfile(cfg) {
     outerRadius: Ro,
     sBoreMid: 0,
     sOuterMid: L / 2,
-    flatOuterHalf: a - cornerAxial,
-    flatInnerHalf: zLip - cfg.lipChamfer - e,
-    stations: { rFilletStart, rCrease, rCoveBottom, rLipTop, zLip, zGroove, zCoveIn },
+    flatOuterHalf: a - C.recess - corner.zMax,
+    cornerEndRadius: corner.endRadius,
+    flatInnerHalf: zEdgeC,
   };
 }

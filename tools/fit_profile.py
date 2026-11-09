@@ -1,84 +1,90 @@
 #!/usr/bin/env python3
-"""Sovittaa renkaan poikkileikkauksen muodon virallisen tuotekuvan ääriviivaan.
+"""Sovittaa renkaan poikkileikkauksen virallisiin tuotekuviin (kaksi näkymää).
 
-Menetelmä (analysis-by-synthesis):
-  1. Rengas on pyörähdyskappale, joten sen ääriviiva kuvassa määräytyy suoraan
-     poikkileikkauksesta ja kamerasta. Ääriviiva ei riipu valaistuksesta eikä materiaalista.
-  2. Poikkileikkaus parametrisoidaan:
-       • ulkoreuna: kaksi tangentiaalista kaarta (iso R1 kulman phi verran, sitten pieni R2
-         sivupintaan) – tavallinen CAD-pyöristys;
-       • sisäreuna: sisäkuoren tasainen reunus (upotus sivupinnasta) ja 45° viiste.
-     Viralliset leveys 6,09 mm ja paksuus 2,28 mm pidetään kiinteinä.
-  3. Ääriviiva rasteroidaan tarkasti (poikkileikkaus jokaisessa 0,25° kulmassa + niiden
-     väliset pinnat) ja verrataan kuvan alfa-kanavaan (IoU). Nelder–Mead-optimointi useasta
-     lähtöpisteestä: ensin haetaan perspektiivietäisyys (jokaisella etäisyydellä muu kamera
-     ja muoto sovitetaan yhdessä), sitten muoto, lopuksi muoto ja kamera yhdessä.
-  4. Tuloksena parametrit ja ääriviivavirhe millimetreinä (keskiarvo, 95 %, maksimi).
+Rakenne (Ouran purkukuva, aksiaaliset tuotekuvat): värillinen kuori – rako – ohut värillinen
+lukitusrengas – sauma – pyöreäreunainen titaaninen sisäosa – reiän pinta.
+
+Menetelmä:
+  1. Säteittäiset rajat mitataan akselin suuntaisesta kuvasta (tools/axial_features.py):
+     kuoren värillinen kaari päättyy 0.515 mm syvyydelle, lukitusrengas 0.61–1.11 mm
+     (tasainen osa 0.695–1.065), titaanisen sisäosan korkeus reiän pinnasta 1.09 mm.
+     Nämä pidetään kiinteinä.
+  2. Muoto sovitetaan 43°-tuotekuvan ääriviivaan (rengas on pyörähdyskappale, joten ääriviiva
+     riippuu vain poikkileikkauksesta ja kamerasta, ei valaistuksesta):
+       • kuoren reuna: normaalin kääntymiskulma theta(u) = Phi · u^(ramp+1) kaarenpituuden
+         suhteen – kaarevuus kasvaa tasaisesti (G2-liitos ulkopintaan); Phi > 90° tarkoittaa,
+         että reuna kaartuu levein kohdan ohi takaisin (täysin pyöreä reuna);
+       • titaaninen sisäosa: superellipsin neljännes sivupinnan tasosta reiän pintaan
+         (syvyys d, eksponentti n).
+     Kamera (6), sisäsäde, ramp, Phi, d ja n sovitetaan Nelder–Mead-menetelmällä (IoU).
+  3. Raportoidaan IoU, ääriviivavirhe millimetreinä ja tarkistuksena lukitusrenkaan tasaisen
+     vyön reunojen paikat 43°-kuvan ylä- ja alaosassa (havaittu vs. ennustettu, px).
 
 Käyttö:
-  python3 tools/fit_camera.py  kuva.png --out cam.json      # ensin kameran alkuarvaus
-  python3 tools/fit_profile.py kuva.png cam.json --out profile.json [--res 2000]
-
-Tulos Ouran 8000 px Silver-tuotekuvalle: R1 ≈ 2,7 mm, R2 ≈ 0,05 mm, phi ≈ 24,5°
-(ulkoreunan kaarevuus ulottuu ~1,15 mm sivusta, säteittäinen pudotus ~0,29 mm),
-sisäpinta päättyy ~0,2 mm sivupinnan tasosta; IoU 0,997, ääriviivavirhe keskimäärin
-0,009 mm ja 95 % < 0,015 mm. Aiempi ympyräpyöristys r 0,55 mm: virhe 95 % < 0,08 mm.
+  python3 tools/fit_camera.py  kuva.png --out cam.json
+  python3 tools/fit_profile.py kuva.png cam.json --out profile.json [--phi 100,130,160]
 Vaatii: numpy, scipy, opencv-python-headless, pillow.
 """
 import argparse, json
 import numpy as np, cv2
 from PIL import Image
 from scipy.optimize import minimize
+from scipy.integrate import cumulative_trapezoid
 
 Image.MAX_IMAGE_PIXELS = None
 ap = argparse.ArgumentParser()
 ap.add_argument('image')
 ap.add_argument('cam')
-ap.add_argument('--res', type=int, default=2000)
 ap.add_argument('--out', default='profile.json')
+ap.add_argument('--phi', default='100,130,160', help='kuoren reunan kääntymiskulman alkuarvot (astetta)')
 args = ap.parse_args()
 
+W, T = 6.09, 2.28
+A = W / 2
+HR = 0.515                                     # kuoren kaaren säteittäinen syvyys (aksiaalikuva)
+LR_OUT, LR_FLAT_O, LR_FLAT_I = 0.61, 0.695, 1.065
+HF = 1.09                                      # titaanisen sisäosan korkeus reiän pinnasta
+# lukitusrenkaan tasaisen vyön reunat 43°-kuvassa (Ouran 8000 px Silver, sarake x = 500, 1000 px asteikko)
+OBS = {('bot', LR_FLAT_O): 899.6, ('bot', LR_FLAT_I): 890.9, ('top', LR_FLAT_O): 307.2, ('top', LR_FLAT_I): 316.6}
+
 _src = Image.open(args.image).convert('RGBA')
-_targets = {}
+_tg = {}
 
 
 def set_res(n):
     global N, target, TH
     N = n
+    if n not in _tg:
+        _tg[n] = np.array(_src.resize((n, n), Image.LANCZOS))[..., 3] > 127
+    target = _tg[n]
     TH = np.linspace(-np.pi, np.pi, 1441 if n >= 1500 else 541)
-    if n not in _targets:
-        _targets[n] = np.array(_src.resize((n, n), Image.LANCZOS))[..., 3] > 127
-    target = _targets[n]
 
 
-set_res(args.res)
-W, T = 6.09, 2.28
-A = W / 2
-TH = np.linspace(-np.pi, np.pi, 1441)
-
-
-def corner_pts(R1, R2, phi, k1=14, k2=14):
-    pts = [(0.0, 0.0)]
-    for al in np.linspace(0, phi, k1)[1:]:
-        pts.append((R1 * np.sin(al), -R1 * (1 - np.cos(al))))
-    z0, r0 = pts[-1]
-    for al in np.linspace(phi, np.pi / 2, k2)[1:]:
-        pts.append((z0 + R2 * (np.sin(al) - np.sin(phi)), r0 - R2 * (np.cos(phi) - np.cos(al))))
-    return np.array(pts)
+def edge_curve(ramp, Phi, k=34):
+    u = np.linspace(0, 1, 3000)
+    th = Phi * u ** (ramp + 1)
+    z = cumulative_trapezoid(np.cos(th), u, initial=0)
+    d = cumulative_trapezoid(np.sin(th), u, initial=0)
+    S = HR / d[-1]
+    idx = np.linspace(0, len(u) - 1, k).astype(int)
+    return np.stack([z[idx] * S, -d[idx] * S], 1), S
 
 
 def envelope(Ri, P):
-    R1, R2, phi, lipRec, chamfer = P
+    ramp, Phi, d, n = P
     Ro = Ri + T
-    c = corner_pts(R1, R2, phi)
-    zf = A - c[-1, 0]
-    lipH = 0.51  # reunuksen korkeus ei vaikuta ääriviivaan (upotettu)
-    pts = [(z, Ro) for z in np.linspace(-zf, zf, 9)[::-1]]
+    c, _ = edge_curve(ramp, Phi)
+    zf = A - c[:, 0].max()
+    pts = [(z, Ro) for z in np.linspace(-zf, zf, 7)[::-1]]
     pts += [(zf + dz, Ro + dr) for dz, dr in c[1:]]
-    pts += [(A, Ri + 1.35), (A - lipRec, Ri + lipH), (A - lipRec, Ri + chamfer), (A - lipRec - chamfer, Ri)]
-    pts += [(-(A - lipRec - chamfer), Ri), (-(A - lipRec), Ri + chamfer), (-(A - lipRec), Ri + lipH), (-A, Ri + 1.35)]
-    pts += [(-(zf + dz), Ro + dr) for dz, dr in c[::-1][:-1]]
-    return np.array(pts)
+    pts += [(A - 0.085, Ro - LR_OUT), (A - 0.025, Ro - LR_OUT - 0.025), (A, Ro - LR_FLAT_O), (A, Ro - LR_FLAT_I), (A - 0.02, Ri + HF)]
+    t = np.linspace(0, np.pi / 2, 16)
+    fl = np.stack([(A - d) + (d - 0.02) * np.cos(t) ** (2 / n), HF - HF * np.sin(t) ** (2 / n)], 1)
+    pts += [(z, Ri + r) for z, r in fl]
+    right = np.array(pts)
+    left = right[::-1].copy()
+    left[:, 0] *= -1
+    return np.concatenate([right, left[1:-1]])
 
 
 def rot(ax, ay):
@@ -88,16 +94,20 @@ def rot(ax, ay):
     return np.array([[c, 0, s], [0, 1, 0], [-s, 0, c]]) @ Rx
 
 
-def render(cam, Ri, P):
+def project(cam, P3):
     ax, ay, D, f, cx, cy = cam
-    prof = envelope(Ri, P)
+    Q = P3 @ rot(ax, ay).T
+    zc = D - Q[..., 2]
+    return cx + f * Q[..., 0] / zc, cy - f * Q[..., 1] / zc
+
+
+def render(cam, prof):
     z = prof[:, 0][None, :]
     r = prof[:, 1][None, :]
     V = np.stack([r * np.sin(TH)[:, None], -r * np.cos(TH)[:, None], np.repeat(z, len(TH), 0)], -1)
-    Q = V @ rot(ax, ay).T
-    zc = D - Q[..., 2]
+    u, v = project(cam, V)
     s = N / 1000
-    q = (np.stack([cx * s + f * s * Q[..., 0] / zc, cy * s - f * s * Q[..., 1] / zc], -1) * 16).astype(np.int32)
+    q = (np.stack([u * s, v * s], -1) * 16).astype(np.int32)
     img = np.zeros((N, N), np.uint8)
     for k in range(q.shape[0] - 1):
         cv2.fillPoly(img, [q[k]], 1, shift=4)
@@ -110,83 +120,61 @@ def iou(m):
     return np.logical_and(m, target).sum() / np.logical_or(m, target).sum()
 
 
-LO = np.array([0.3, 0.01, np.radians(3), 0.0, 0.02])
-HI = np.array([12.0, 0.8, np.radians(85), 0.8, 1.2])
+LO = np.array([0.0, np.radians(90), 0.05, 1.0])
+HI = np.array([6.0, np.radians(175), 0.8, 6.0])
 
 
-def loss(x, cam_free, cam0):
-    cam = x[:6] if cam_free else cam0
-    Ri = x[6] if cam_free else x[0]
-    P = np.asarray(x[7:] if cam_free else x[1:])
-    if np.any(P < LO) or np.any(P > HI):
+def loss(x):
+    if np.any(x[7:] < LO) or np.any(x[7:] > HI):
         return 1.0
-    return 1 - iou(render(cam, Ri, P))
+    return 1 - iou(render(x[:6], envelope(x[6], x[7:])))
 
 
 def contour_error(m, cam):
     pxmm = cam[3] / cam[2] * (N / 1000)
     out = []
-    for a, b in ((target, m), (m, target)):
-        edge = cv2.Canny(b.astype(np.uint8) * 255, 50, 150)
+    for a_, b_ in ((target, m), (m, target)):
+        edge = cv2.Canny(b_.astype(np.uint8) * 255, 50, 150)
         dist = cv2.distanceTransform(255 - edge, cv2.DIST_L2, 5)
-        cs, _ = cv2.findContours(a.astype(np.uint8), cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
+        cs, _ = cv2.findContours(a_.astype(np.uint8), cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
         out += [dist[c[:, 0, 1], c[:, 0, 0]] / pxmm for c in cs if len(c) > 200]
     e = np.concatenate(out)
     return {'mean_mm': float(e.mean()), 'p95_mm': float(np.percentile(e, 95)), 'max_mm': float(e.max())}
 
 
 c0 = json.load(open(args.cam))
-cam_init = np.array([c0['tiltX'], c0['tiltY'], c0['distance'], c0['focalPx'], c0['cx'], c0['cy']])
-Ri0 = c0['innerRadius']
-starts = ([3.0, 0.05, np.radians(22), 0.12, 0.08], [1.5, 0.2, np.radians(35), 0.2, 0.2], [6.0, 0.05, np.radians(15), 0.05, 0.15])
-
-# Pelkkä siluetti erottelee perspektiivietäisyyden heikosti, joten se haetaan erikseen:
-# jokaisella etäisyydellä sovitetaan muu kamera (kallistus, polttoväli, keskipiste),
-# sisäsäde ja profiili yhdessä (nopeasti 1000 px tarkkuudella), ja paras etäisyys valitaan.
-def loss_fixedD(x, D):
-    cam = np.array([x[0], x[1], D, x[2], x[3], x[4]])
-    return loss(np.concatenate([cam, x[5:]]), True, cam)
-
-
+cam0 = [c0['tiltX'], c0['tiltY'], c0['distance'], c0['focalPx'], c0['cx'], c0['cy']] if 'tiltX' in c0 else c0['cam']
+Ri0 = c0.get('innerRadius', c0.get('Ri', 10.9))
 set_res(1000)
-cand = []
-for D in (140.0, 170.0, 200.0, 240.0, 300.0):
-    c = cam_init.copy()
-    x0 = np.array([c[0], c[1], c[3] * D / c[2], c[4], c[5], Ri0] + starts[0])
-    r = minimize(loss_fixedD, x0, args=(D,), method='Nelder-Mead',
-                 options={'maxiter': 700, 'xatol': 1e-5, 'fatol': 1e-8, 'adaptive': True})
-    print('etäisyys %.0f mm: IoU %.5f' % (D, 1 - r.fun), flush=True)
-    cand.append((r.fun, D, r.x))
-cand.sort(key=lambda t: t[0])
-_, D, x = cand[0]
-cam0 = np.array([x[0], x[1], D, x[2], x[3], x[4]])
-Ri0 = x[5]
-set_res(args.res)
 best = None
-for P0 in [list(x[6:])] + list(starts):
-    r = minimize(loss, np.array([Ri0] + P0), args=(False, cam0), method='Nelder-Mead',
-                 options={'maxiter': 1500, 'xatol': 1e-5, 'fatol': 1e-8, 'adaptive': True})
-    print('vaihe A: IoU %.5f' % (1 - r.fun), np.round(r.x, 4).tolist(), flush=True)
+for phi0 in [float(v) for v in args.phi.split(',')]:
+    x0 = np.array(list(cam0) + [Ri0, 1.5, np.radians(phi0), 0.2, 2.0])
+    r = minimize(loss, x0, method='Nelder-Mead', options={'maxiter': 1600, 'xatol': 1e-6, 'fatol': 1e-9, 'adaptive': True})
+    print('alku %.0f°: IoU %.5f' % (phi0, 1 - r.fun), flush=True)
     if best is None or r.fun < best.fun:
         best = r
-r = minimize(loss, np.concatenate([cam0, best.x]), args=(True, cam0), method='Nelder-Mead',
-             options={'maxiter': 4000, 'xatol': 1e-6, 'fatol': 1e-9, 'adaptive': True})
-cam, Ri, P = r.x[:6], r.x[6], r.x[7:]
-c = corner_pts(*P[:3])
-m = render(cam, Ri, P)
-res = {
+set_res(2000)
+r = minimize(loss, best.x, method='Nelder-Mead', options={'maxiter': 500, 'xatol': 1e-7, 'fatol': 1e-10, 'adaptive': True})
+x = r.x
+cam, Ri, P = x[:6], x[6], x[7:]
+m = render(cam, envelope(Ri, P))
+c, S = edge_curve(P[0], P[1])
+imax = int(np.argmax(c[:, 0]))
+Ro = Ri + T
+res = []
+for (side, depth), yobs in OBS.items():
+    P3 = np.array([0, -(Ro - depth), A]) if side == 'bot' else np.array([0, Ro - depth, A])
+    res.append(float(project(cam, P3)[1] - yobs))
+out = {
     'iou': float(iou(m)),
     'contourError': contour_error(m, cam),
     'innerRadius': float(Ri),
-    'outerCorner': {'R1': float(P[0]), 'R2': float(P[1]), 'phiDeg': float(np.degrees(P[2])),
-                    'axialExtent': float(c[-1, 0]), 'radialDrop': float(-c[-1, 1])},
-    'innerEdge': {'lipRecess': float(P[3]), 'chamfer': float(P[4])},
+    'shellEdge': {'ramp': float(P[0]), 'endAngleDeg': float(np.degrees(P[1])), 'drop': HR,
+                  'depthAtMaxWidth': float(-c[imax, 1]), 'axialExtentToMaxWidth': float(c[imax, 0]),
+                  'endRadius': float(S / ((P[0] + 1) * P[1]))},
+    'innerEdge': {'depth': float(P[2]), 'exponent': float(P[3]), 'height': HF},
+    'lockingRingBandResidualPx': res,
     'camera': dict(zip(['tiltX', 'tiltY', 'distance', 'focalPx', 'cx', 'cy'], map(float, cam))),
 }
-json.dump(res, open(args.out, 'w'), indent=2)
-print(json.dumps(res, indent=2))
-ov = np.zeros((N, N, 3), np.uint8)
-ov[..., 0] = target * 255
-ov[..., 1] = m * 255
-ov[..., 2] = (target & m) * 255
-Image.fromarray(ov).save('profile_overlay.png')
+json.dump(out, open(args.out, 'w'), indent=2)
+print(json.dumps(out, indent=2))

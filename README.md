@@ -27,28 +27,22 @@ Sivu toimii myös GitHub Pagesissa (repo root). three.js ladataan jsDelivr-CDN:s
 **Mitat:** leveys 6,09 mm ja paksuus 2,28 mm (viralliset). Sisähalkaisija on 21,9 mm, eli
 sama koko kuin virallisissa tuotekuvissa, jotta malli on suoraan verrattavissa niihin.
 
-**Poikkileikkaus** ulkoa sisään. Ulko- ja sisäreunan muoto on sovitettu virallisen
-tuotekuvan ääriviivaan (ks. *Miten muoto validoitiin*); sivupinnan vyöhykkeet on mitattu
-perspektiivikorjatusta aksiaalikuvasta:
+**Poikkileikkaus.** Sivupinnalla on kolme osaa, kuten Ouran purkukuvassa: värillinen kuori, ohut
+värillinen lukitusrengas ja pyöreäreunainen titaaninen sisäosa. Säteittäiset rajat on mitattu
+akselin suuntaisista tuotekuvista ja muoto 43°-tuotekuvan ääriviivasta (ks. *Miten muoto
+validoitiin*). Syvyydet on mitattu ulkopinnasta:
 
 | Osa | Mitta | Materiaali |
 | --- | --- | --- |
 | tasainen ulkopinta | – | PVD-väri |
-| ulkoreuna: kaksi tangentiaalista kaarta | R1 2,7 mm (24,5°) → R2 0,05 mm; ulottuma 1,15 mm, pudotus 0,29 mm | PVD-väri |
-| värillinen reunarengas sivupinnalla | 0,26 mm | PVD-väri |
-| ohut sauma (PVD-raja) | 0,016 mm | – |
-| tasainen sivupinta | – | titaani |
-| terävä reunalinja | r 0,05 mm, 0,95 mm ulkopinnasta | titaani |
-| loivasti kupera viiste | 0,68 mm | titaani |
-| ura | 0,16 × 0,24 mm | titaani |
-| sisäkuoren tasainen reunus | 0,11 mm sivupinnan tason alapuolella | titaani |
-| 45° reunaviiste | 0,085 mm | titaani |
-| tasainen sisäpinta (ulottuu ~0,2 mm sivusta) | – | titaani |
+| kuoren reuna: kaarevuus kasvaa tasaisesti (θ ∝ s^2,8) | ulottuma 1,22 mm, syvyys 0,515 mm, loppusäde ≈ 0,34 mm | PVD-väri |
+| rako kuoren ja lukitusrenkaan välissä | 0,52–0,61 mm | – |
+| lukitusrengas (pyöristetyt reunat, tasainen pinta 0,695–1,065 mm) | 0,61–1,11 mm | PVD-väri |
+| sauma | 1,11–1,16 mm | – |
+| titaaninen sisäosa: loivasti kupera pinta, 0,08 mm:n pyöristys reikään | 1,16 mm → reikä | titaani |
 
-Värillinen PVD-pinnoite on ulkopinnassa, ulkoreunan pyöristyksessä ja kapeassa reunarenkaassa
-(Ouran purkukuvassa erilliset ohuet reunarenkaat). Sivupinnat ja
-sisäkuori ovat kaikissa väreissä hopeista titaania, kuten virallisissa Black-, Gold- ja
-Deep Rose -kuvissa.
+PVD-väri on kuoressa ja lukitusrenkaassa (Ouran purkukuvassa kultaiset ohuet renkaat
+molemmilla puolilla). Titaaninen sisäosa ja reiän pinta ovat kaikissa väreissä hopeisia.
 
 **Sensorit:** neljä erillistä ikkunaa kämmenen puolella.
 - **Sijainnit:** 2 × tri-LED ±34° ja 2 × fotodiodi ±60° keskilinjasta.
@@ -72,39 +66,46 @@ Deep Rose (kuparinruusu).
 
 ## Miten muoto validoitiin
 
-1. **Kameran sovitus siluettiin.** Ouran 8000 px:n tuotekuvalle sovitettiin kameran asento,
-   etäisyys ja polttoväli (`tools/fit_camera.py`). Sama tulos toistuu muista värikuvista
-   (sisäsäde 10,8–10,95 mm, kallistus 43°).
-2. **Poikkileikkauksen sovitus ääriviivaan** (`tools/fit_profile.py`). Rengas on
-   pyörähdyskappale, joten sen ääriviiva määräytyy suoraan poikkileikkauksesta ja kamerasta.
-   Se ei riipu valaistuksesta eikä materiaalista. Ulkoreunan kaksikaarinen pyöristys ja
-   sisäreunan upotus ja viiste optimoitiin kameran kanssa yhdessä useasta lähtöpisteestä.
-   Kaikki lähtöpisteet päätyivät samaan muotoon (R1 2,7–3,3 mm, R2 ≈ 0,05 mm,
-   pudotus 0,29 mm).
+1. **Aksiaaliset sivukuvat (3840 px, Deep Rose, Black, Brushed Silver)** (`tools/axial_features.py`).
+   - **Osien tunnistus:** sivupinnan osat näkyvät samankeskisinä renkaina. Värillinen ja
+     titaaninen osa erotetaan värikylläisyydestä. Tasainen pinta erottuu vakiokirkkaudesta,
+     kaareva pinta tasaisesta liukumasta.
+   - **Perspektiivikamera** ratkaistaan kolmesta havainnosta: reiän reuna, reiän pinnan lähin
+     pää ja ulkoreuna. Tulos on D ≈ 120 mm ja 112 px/mm sivupinnalla.
+   - **Riippumaton tarkistus:** sama tasainen lukitusrenkaan vyö näkyy 43°-kuvan ylä- ja
+     alaosassa syvyyksillä 0,99–1,32 ja 0,36–0,74 mm. Niiden keskiarvo 0,675–1,03 mm vastaa
+     aksiaalista mittausta (0,695–1,065 mm) 0,03 mm:n tarkkuudella.
+2. **Muoto 43°-ääriviivasta** (`tools/fit_camera.py`, `tools/fit_profile.py`). Rengas on
+   pyörähdyskappale, joten ääriviiva riippuu vain poikkileikkauksesta ja kamerasta, ei
+   valaistuksesta.
+   - **Sovitettavat parametrit:** kuoren reunan kaarevuuden kasvu, sen kääntymiskulma ja
+     sisäosan reunan muoto sovitetaan yhdessä kameran kanssa. Aksiaaliset säteet pysyvät kiinteinä.
+   - **Kuoren reuna:** päätyy 90° kääntymiskulmaan. Yli 90° kaartuva, täysin pyöreä reuna ei
+     paranna sovitusta.
+   - **Reiän reuna:** ääriviiva vaatii reiän pinnan ulottuvan noin 0,07 mm:n päähän
+     sivupinnasta. Pyöristyksen säde voi siksi olla enintään noin 0,09 mm.
 
    | Profiili | IoU | Ääriviivavirhe keskim. | 95 % | max |
    | --- | --- | --- | --- | --- |
-   | aiempi ympyräpyöristys r 0,55 mm | 0,984 | 0,036 mm | 0,111 mm | 0,123 mm |
-   | sovitettu (kaksi kaarta) | 0,997 | 0,009 mm | 0,015 mm | 0,043 mm |
-   | toteutettu 3D-malli, renderöity (`?match&mask`) | 0,995 | 0,014 mm | 0,031 mm | 0,046 mm |
+   | toteutettu 3D-malli, renderöity (`?match&mask`) | 0,992 | 0,019 mm | 0,046 mm | 0,062 mm |
 
-   Toteutetun mallin tarkistukseen: `tools/compare_silhouette.py`.
-3. **Aksiaaliset sivukuvat (3840 px).** Sensorien kulma-asemat, pituudet ja korkeudet
-   mitattiin alfa-kanavasta, ja sivupinnan vyöhykkeet kirkkausprofiileista. Kuvissa on
-   perspektiivi (kamera n. 150 mm), ja se korjattiin.
-4. **Profiiliviivojen projisointi** virallisiin kuviin (`tools/overlay_profile.py`).
-   Uran, reunalinjan ja PVD-rajan paikat osuvat kuvien viivoihin.
-5. **Rinnakkaisrenderöinnit** virallisen kuvan kameralla (`?match`) kaikilla kuudella värillä.
-   Näin löytyivät esim. PVD-alueen rajaus ja studiovalaistuksen rakenne. Kameran puolella
-   sormuksen alla on musta kangas; se pääteltiin siitä, että tasainen sivupinta heijastaa
-   kuvan ylä- ja alaosassa eri värejä.
+   Tarkistustyökalu: `tools/compare_silhouette.py`.
+3. **Avoin ristiriita:** lukitusrenkaan vyö näkyy 43°-kuvassa sekä ylä- että alaosassa noin
+   5–10 px (0,2–0,45 mm) alempana kuin mikään ääriviivaan sopiva kamera ennustaa.
+   - **Kokeillut selitykset:** kuoren ja lukitusrenkaan keskinäinen syvyys (−0,15 … +0,4 mm)
+     ja yli 90° kaartuva kuoren reuna. Kumpikaan ei sovita vyötä ja ääriviivaa yhtä aikaa.
+   - **Ratkaisu:** malli perustuu johdonmukaisiin havaintoihin eli ääriviivaan ja aksiaalisiin
+     säteisiin. Kuori ja lukitusrengas ovat samassa tasossa.
+4. **Rinnakkaisrenderöinnit** virallisen kuvan kameralla: `?match` (43°) ja `?match=axial`
+   (akselin suunta). Studiovalaistus on säädetty niin, että sivupinnan ylä- ja alaosa näyttävät
+   samoilta kuin virallisessa kuvassa.
 
 Virallisia kuvia ei ole tallennettu repoon. Ne löytyvät Ouran kauppasivulta
 (ouraring.com/store/rings/oura-ring-5).
 
 **Arvioita:** suuntausmerkin ja yläosan levyn tarkka syvyys, sensorikomponenttien sisäiset
-mitat (kokoluokka kuvista), sivupinnan viisteen kaarevuus ja sisäreunuksen korkeus. Niitä ei
-näe ääriviivasta. Oura ei julkaise CAD-malleja.
+mitat (kokoluokka kuvista), rakojen syvyydet ja titaanisen sisäosan pinnan tarkka kaarevuus.
+Niitä ei näe ääriviivasta. Oura ei julkaise CAD-malleja.
 
 ## Renderöinti
 
@@ -130,6 +131,7 @@ näe ääriviivasta. Oura ei julkaise CAD-malleja.
 | `?still` | ei automaattista pyörintää |
 | `?match` | virallisen tuotekuvan kamera ja valkoinen tausta (validointi) |
 | `?match&mask` | sama siluettina ääriviivavertailua varten |
+| `?match=axial` | akselin suuntaisen sivukuvan kamera |
 | `?nohq` | ei SSAA:ta |
 | `?rot=x,y,z&zoom=…&pan=x,y,z` | alkunäkymä |
 
@@ -145,8 +147,8 @@ src/materials.js           PBR-materiaalit, värit, sisäheijastukset, laikkumas
 src/studio.js              studioympäristö, tausta, varjo
 src/controls.js            kosketus- ja hiiriohjaus
 src/main.js                renderöijä, jälkikäsittely, renderöintisilmukka, vertailutila
-tools/                     validointityökalut: kameran ja profiilin sovitus, ääriviivavertailu,
-                           profiiliviivojen projisointi
+tools/                     validointityökalut: aksiaalikuvan mittaus, kameran ja profiilin
+                           sovitus, ääriviivavertailu
 ```
 
 Malli on itsenäinen havainnollistus. Se ei ole Ouran virallinen CAD-aineisto eikä käytä

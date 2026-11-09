@@ -125,6 +125,11 @@ async function main() {
   // Lattia + kontaktivarjo
   const boundR = Math.hypot(profile.outerRadius, profile.halfWidth);
   const matchMode = params.has('match');
+  // ?match = 43° tuotekuva (lineItem), ?match=axial = akselin suuntainen sivukuva (hero side view)
+  const matchAxial = params.get('match') === 'axial';
+  const MATCH = matchAxial
+    ? { fov: 16.62, dist: 120.4, near: 100, far: 140, offset: [0, 0], euler: [0, 0, 0] }
+    : { fov: 9.4370, dist: 186.94, near: 150, far: 230, offset: [500 - 499.7308, 500 - 541.4777], euler: [0.74527, 0.0008, 0] };
   const floorY = -(boundR + 1.6);
   const ground = createGround(floorY);
   scene.add(ground.group);
@@ -154,14 +159,14 @@ async function main() {
   const placeCamera = () => {
     if (matchMode) {
       // Vertailutila: kamera täsmälleen Ouran virallisen tuotekuvan asennossa (sovitettu siluettiin)
-      camera.fov = 9.4157;
-      camera.position.set(0, 0, 187.21);
+      camera.fov = MATCH.fov;
+      camera.position.set(0, 0, MATCH.dist);
       camera.up.set(0, 1, 0);
       camera.lookAt(0, 0, 0);
-      camera.near = 150;
-      camera.far = 230;
+      camera.near = MATCH.near;
+      camera.far = MATCH.far;
       // kuvakeskipisteen siirto (sovituksen cx, cy 1000 px kuvassa) – ei sormuksen siirtoa 3D:ssä
-      camera.setViewOffset(1000, 1000, 500 - 499.7783, 500 - 541.2199, 1000, 1000);
+      camera.setViewOffset(1000, 1000, MATCH.offset[0], MATCH.offset[1], 1000, 1000);
       camera.updateProjectionMatrix();
       return;
     }
@@ -179,7 +184,7 @@ async function main() {
   );
   ring.quaternion.copy(heroQuat);
   if (matchMode) {
-    ring.quaternion.setFromEuler(new THREE.Euler(0.75705, 0.00076, 0, 'YXZ'));
+    ring.quaternion.setFromEuler(new THREE.Euler(...MATCH.euler, 'YXZ'));
     if (params.has('mask')) {
       // Ääriviivavalidointi: valkoinen siluetti mustalla taustalla
       scene.overrideMaterial = new THREE.MeshBasicNodeMaterial({ color: 0xffffff });
