@@ -24,25 +24,29 @@ Sivu toimii myös GitHub Pagesissa (repo root). three.js ladataan jsDelivr-CDN:s
 
 ## Mitä mallissa on
 
-**Mitat:** leveys 6,09 mm ja paksuus 2,28 mm (viralliset). Sisähalkaisija on 21,8 mm, eli
+**Mitat:** leveys 6,09 mm ja paksuus 2,28 mm (viralliset). Sisähalkaisija on 21,9 mm, eli
 sama koko kuin virallisissa tuotekuvissa, jotta malli on suoraan verrattavissa niihin.
 
-**Poikkileikkaus** ulkoa sisään. Säteittäiset mitat ovat sivupinnalla, ja ne on mitattu
+**Poikkileikkaus** ulkoa sisään. Ulko- ja sisäreunan muoto on sovitettu virallisen
+tuotekuvan ääriviivaan (ks. *Miten muoto validoitiin*); sivupinnan vyöhykkeet on mitattu
 perspektiivikorjatusta aksiaalikuvasta:
 
 | Osa | Mitta | Materiaali |
 | --- | --- | --- |
 | tasainen ulkopinta | – | PVD-väri |
-| ulkoreunan pyöristys | r 0,55 mm | PVD-väri |
+| ulkoreuna: kaksi tangentiaalista kaarta | R1 2,7 mm (24,5°) → R2 0,05 mm; ulottuma 1,15 mm, pudotus 0,29 mm | PVD-väri |
+| värillinen reunarengas sivupinnalla | 0,26 mm | PVD-väri |
 | ohut sauma (PVD-raja) | 0,016 mm | – |
-| tasainen sivupinta | 0,38 mm | titaani |
-| terävä reunalinja | r 0,05 mm | titaani |
+| tasainen sivupinta | – | titaani |
+| terävä reunalinja | r 0,05 mm, 0,95 mm ulkopinnasta | titaani |
 | loivasti kupera viiste | 0,68 mm | titaani |
 | ura | 0,16 × 0,24 mm | titaani |
-| sisäkuoren viiste | 0,36 mm | titaani |
-| tasainen sisäpinta | – | titaani |
+| sisäkuoren tasainen reunus | 0,11 mm sivupinnan tason alapuolella | titaani |
+| 45° reunaviiste | 0,085 mm | titaani |
+| tasainen sisäpinta (ulottuu ~0,2 mm sivusta) | – | titaani |
 
-Värillinen PVD-pinnoite on vain ulkopinnassa ja ulkoreunan pyöristyksessä. Sivupinnat ja
+Värillinen PVD-pinnoite on ulkopinnassa, ulkoreunan pyöristyksessä ja kapeassa reunarenkaassa
+(Ouran purkukuvassa erilliset ohuet reunarenkaat). Sivupinnat ja
 sisäkuori ovat kaikissa väreissä hopeista titaania, kuten virallisissa Black-, Gold- ja
 Deep Rose -kuvissa.
 
@@ -69,25 +73,38 @@ Deep Rose (kuparinruusu).
 ## Miten muoto validoitiin
 
 1. **Kameran sovitus siluettiin.** Ouran 8000 px:n tuotekuvalle sovitettiin kameran asento,
-   etäisyys ja polttoväli niin, että mallin siluetti peittää kuvan siluetin
-   (`tools/fit_camera.py`). IoU = 0,99 virallisilla mitoilla. Sama tulos toistuu muista
-   värikuvista (IoU 0,990, sisäsäde 10,8–10,9 mm, kallistus 43°).
-2. **Aksiaaliset sivukuvat (3840 px).** Sensorien kulma-asemat, pituudet ja korkeudet
+   etäisyys ja polttoväli (`tools/fit_camera.py`). Sama tulos toistuu muista värikuvista
+   (sisäsäde 10,8–10,95 mm, kallistus 43°).
+2. **Poikkileikkauksen sovitus ääriviivaan** (`tools/fit_profile.py`). Rengas on
+   pyörähdyskappale, joten sen ääriviiva määräytyy suoraan poikkileikkauksesta ja kamerasta.
+   Se ei riipu valaistuksesta eikä materiaalista. Ulkoreunan kaksikaarinen pyöristys ja
+   sisäreunan upotus ja viiste optimoitiin kameran kanssa yhdessä useasta lähtöpisteestä.
+   Kaikki lähtöpisteet päätyivät samaan muotoon (R1 2,7–3,3 mm, R2 ≈ 0,05 mm,
+   pudotus 0,29 mm).
+
+   | Profiili | IoU | Ääriviivavirhe keskim. | 95 % | max |
+   | --- | --- | --- | --- | --- |
+   | aiempi ympyräpyöristys r 0,55 mm | 0,984 | 0,036 mm | 0,111 mm | 0,123 mm |
+   | sovitettu (kaksi kaarta) | 0,997 | 0,009 mm | 0,015 mm | 0,043 mm |
+   | toteutettu 3D-malli, renderöity (`?match&mask`) | 0,995 | 0,014 mm | 0,031 mm | 0,046 mm |
+
+   Toteutetun mallin tarkistukseen: `tools/compare_silhouette.py`.
+3. **Aksiaaliset sivukuvat (3840 px).** Sensorien kulma-asemat, pituudet ja korkeudet
    mitattiin alfa-kanavasta, ja sivupinnan vyöhykkeet kirkkausprofiileista. Kuvissa on
-   perspektiivi (kamera n. 150 mm), ja kun se korjataan, mitat täsmäävät virallisiin
-   6,09 × 2,28 mm:iin.
-3. **Profiiliviivojen projisointi.** Jokainen reunaviiva (pyöristys, PVD-raja, reunalinja,
-   ura, viiste) projisoitiin sovitetulla kameralla virallisiin kuviin (`tools/overlay_profile.py`).
-   Viivat osuvat kuvien näkyviin viivoihin noin 0,1–0,2 mm:n tarkkuudella.
-4. **Rinnakkaisrenderöinnit.** Malli renderöitiin täsmälleen virallisen kuvan kameralla
-   (`?match`-tila) kaikilla kuudella värillä ja verrattiin kuviin. Näin löytyivät esim.
-   PVD-alueen rajaus, sisäkuoren viiste ja studiovalaistuksen luonne.
+   perspektiivi (kamera n. 150 mm), ja se korjattiin.
+4. **Profiiliviivojen projisointi** virallisiin kuviin (`tools/overlay_profile.py`).
+   Uran, reunalinjan ja PVD-rajan paikat osuvat kuvien viivoihin.
+5. **Rinnakkaisrenderöinnit** virallisen kuvan kameralla (`?match`) kaikilla kuudella värillä.
+   Näin löytyivät esim. PVD-alueen rajaus ja studiovalaistuksen rakenne. Kameran puolella
+   sormuksen alla on musta kangas; se pääteltiin siitä, että tasainen sivupinta heijastaa
+   kuvan ylä- ja alaosassa eri värejä.
 
 Virallisia kuvia ei ole tallennettu repoon. Ne löytyvät Ouran kauppasivulta
 (ouraring.com/store/rings/oura-ring-5).
 
 **Arvioita:** suuntausmerkin ja yläosan levyn tarkka syvyys, sensorikomponenttien sisäiset
-mitat (kokoluokka kuvista) ja viisteen tarkka kaarevuus. Oura ei julkaise CAD-malleja.
+mitat (kokoluokka kuvista), sivupinnan viisteen kaarevuus ja sisäreunuksen korkeus. Niitä ei
+näe ääriviivasta. Oura ei julkaise CAD-malleja.
 
 ## Renderöinti
 
@@ -112,6 +129,7 @@ mitat (kokoluokka kuvista) ja viisteen tarkka kaarevuus. Oura ei julkaise CAD-ma
 | `?webgl` | pakota WebGL 2 |
 | `?still` | ei automaattista pyörintää |
 | `?match` | virallisen tuotekuvan kamera ja valkoinen tausta (validointi) |
+| `?match&mask` | sama siluettina ääriviivavertailua varten |
 | `?nohq` | ei SSAA:ta |
 | `?rot=x,y,z&zoom=…&pan=x,y,z` | alkunäkymä |
 
@@ -127,7 +145,8 @@ src/materials.js           PBR-materiaalit, värit, sisäheijastukset, laikkumas
 src/studio.js              studioympäristö, tausta, varjo
 src/controls.js            kosketus- ja hiiriohjaus
 src/main.js                renderöijä, jälkikäsittely, renderöintisilmukka, vertailutila
-tools/                     validointityökalut (kameran sovitus, profiiliviivojen projisointi)
+tools/                     validointityökalut: kameran ja profiilin sovitus, ääriviivavertailu,
+                           profiiliviivojen projisointi
 ```
 
 Malli on itsenäinen havainnollistus. Se ei ole Ouran virallinen CAD-aineisto eikä käytä

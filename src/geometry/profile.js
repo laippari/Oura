@@ -1,9 +1,10 @@
 // Renkaan poikkileikkausprofiili (z = akselin suunta, r = säde).
 //
 // Mitattu virallisista tuotekuvista (ks. README). Sivupinnan rakenne ulkoa sisään:
-//   tasainen ulkopinta ─ ulkoreunan pyöristys ─ tasainen sivupinta ─ terävä reunalinja ─
+//   tasainen ulkopinta ─ loiva kaksikaarinen reuna (R1 ≈ 2.7 mm → R2 ≈ 0.05 mm) ─ tasainen sivupinta ─ terävä reunalinja ─
 //   loiva viiste ─ sauma (ura) ─ sisäkuoren reunus ─ pieni pyöristys ─ tasainen sisäpinta.
-// Värillinen PVD-ulkokehys kattaa vain ulkopinnan ja ulkoreunan pyöristyksen (raja on ohut sauma);
+// Värillinen PVD-ulkokehys kattaa ulkopinnan, ulkoreunan pyöristyksen ja kapean reunarenkaan
+// sivupinnalla (raja on ohut sauma; purkukuvassa erilliset ohuet reunarenkaat);
 // sivupinta, viiste, ura ja sisäpinta ovat sisäkuoren titaania kaikissa väreissä
 // (näkyy selvästi virallisissa Black-, Gold- ja Deep Rose -kuvissa).
 //
@@ -16,15 +17,34 @@ export function buildProfile(cfg) {
   const Ri = cfg.innerRadius;
   const Ro = Ri + cfg.thickness;
 
-  const rFilletStart = Ro - cfg.outerFillet;
-  const rCrease = rFilletStart - cfg.land;
+  // Ulkoreunan kulma: kaksi tangentiaalista kaarta (iso "roll-off" R1 kulmassa phi, sitten pieni R2
+  // sivupintaan). Parametrit sovitettu virallisen tuotekuvan ääriviivaan (tools/fit_profile.py).
+  const { R1, R2, phiDeg } = cfg.outerCorner;
+  const phi = (phiDeg * Math.PI) / 180;
+  const cornerPts = [];
+  {
+    const k1 = 160;
+    const k2 = 120;
+    for (let i = 0; i <= k1; i++) {
+      const al = (phi * i) / k1;
+      cornerPts.push([R1 * Math.sin(al), -R1 * (1 - Math.cos(al))]);
+    }
+    const [z0, r0] = cornerPts[cornerPts.length - 1];
+    for (let i = 1; i <= k2; i++) {
+      const al = phi + ((Math.PI / 2 - phi) * i) / k2;
+      cornerPts.push([z0 + R2 * (Math.sin(al) - Math.sin(phi)), r0 - R2 * (Math.cos(phi) - Math.cos(al))]);
+    }
+  }
+  const cornerAxial = cornerPts[cornerPts.length - 1][0];
+  const cornerRadial = -cornerPts[cornerPts.length - 1][1];
+  const rFilletStart = Ro - cornerRadial;
+  const rCrease = Ro - cfg.creaseFromOuter;
   const rCoveBottom = rCrease - cfg.cove;
   const rLipTop = rCoveBottom - cfg.gap;
   const zLip = a - cfg.lipRecess;
   const zGroove = zLip - cfg.gapDepth;
   const zCoveIn = a - cfg.coveRecess;
   const e = cfg.lipEdge;
-  const f = cfg.outerFillet;
 
   // --- Oikea puolikas tiheänä polylinjana ------------------------------------
   const pts = []; // [z, r, region, cavity]
@@ -55,15 +75,15 @@ export function buildProfile(cfg) {
   const corner = (p0, c, p1, region, cav = 1) => bez(p0, c, p1, region, cav);
 
   const cs = 0.012; // pienet särmäpyöristykset uran nurkissa
-  // 1) sisäpinta keskeltä reunaan
-  line(0, Ri, zLip - cfg.lipChamfer - e * 0.9, Ri, 'shell');
-  // 2) reunus: pieni pyöristys sisäpinnasta ~50° viisteeseen (näkyy aksiaalikuvassa tasaisena
-  //    0.32 mm vyöhykkeenä ja 3/4-kuvassa sisäpinnan tavoin kirkkaana)
-  const chamferBottom = [zLip - cfg.lipChamfer, Ri + e * 0.35];
-  const chamferTop = [zLip, rLipTop - cs];
-  corner([zLip - cfg.lipChamfer - e * 0.9, Ri], [zLip - cfg.lipChamfer + e * 0.15, Ri], chamferBottom, 'shell');
-  // 3) viiste ylös uraan asti
-  line(chamferBottom[0], chamferBottom[1], chamferTop[0], chamferTop[1], 'shell');
+  // 1) sisäpinta keskeltä reunaan (ääriviivasovituksen mukaan sisäpinta päättyy ~0.2 mm sivusta)
+  const ch = cfg.lipChamfer;
+  line(0, Ri, zLip - ch - e, Ri, 'shell');
+  // 2) pieni pyöristys + 45° reunaviiste
+  corner([zLip - ch - e, Ri], [zLip - ch, Ri], [zLip - ch + e * 0.7, Ri + e * 0.7], 'shell');
+  line(zLip - ch + e * 0.7, Ri + e * 0.7, zLip - e * 0.3, Ri + ch - e * 0.3, 'shell');
+  corner([zLip - e * 0.3, Ri + ch - e * 0.3], [zLip, Ri + ch], [zLip, Ri + ch + e], 'shell');
+  // 3) sisäkuoren tasainen reunus (hieman sivupinnan tason alapuolella) ylös uraan asti
+  line(zLip, Ri + ch + e, zLip, rLipTop - cs, 'shell');
   // 4) ura: sisäänpäin, pohjan yli, takaisin ulos
   corner([zLip, rLipTop - cs], [zLip, rLipTop], [zLip - cs, rLipTop], 'shell', 0.75);
   line(zLip - cs, rLipTop, zGroove + cs, rLipTop, 'shell', 0.6, 0.25);
@@ -87,14 +107,21 @@ export function buildProfile(cfg) {
   corner(c2, [a, rCrease], [a, rCrease + cfg.creaseRadius], 'shell');
   const sw = 0.014; // sauma värillisen ulkokehyksen ja titaanin välissä
   const sd = 0.016;
-  line(a, rCrease + cfg.creaseRadius, a, rFilletStart - sw, 'shell');
-  line(a, rFilletStart - sw, a - sd, rFilletStart - 0.003, 'shell', 1, 0.35);
-  line(a - sd, rFilletStart - 0.003, a - sd, rFilletStart + 0.003, 'frame', 0.3, 0.3);
-  const phi0 = Math.asin(sw / f);
-  line(a - sd, rFilletStart + 0.003, a - f + f * Math.cos(phi0), rFilletStart + f * Math.sin(phi0), 'frame', 0.35, 1);
-  // 7) ulkoreunan pyöristys ja tasainen ulkopinta (PVD-väri)
-  arc(a - f, Ro - f, f, phi0, Math.PI / 2, 'frame');
-  line(a - f, Ro, 0, Ro, 'frame');
+  const rSeam = Ro - cfg.pvdSeamFromOuter;
+  line(a, rCrease + cfg.creaseRadius, a, rSeam - sw, 'shell');
+  line(a, rSeam - sw, a - sd, rSeam - 0.003, 'shell', 1, 0.35);
+  line(a - sd, rSeam - 0.003, a - sd, rSeam + 0.003, 'frame', 0.3, 0.3);
+  line(a - sd, rSeam + 0.003, a, rSeam + sw, 'frame', 0.35, 1);
+  // värillinen reunarengas sivupinnalla kulman alkuun asti
+  line(a, rSeam + sw, a, rFilletStart, 'frame');
+  // 7) ulkoreunan kaksikaarinen pyöristys (sivupinnalta ulkopinnalle) ja ulkopinta
+  const zc0 = a - cornerAxial;
+  for (let i = cornerPts.length - 1; i >= 0; i--) {
+    const [dz, dr] = cornerPts[i];
+    const prev = pts[pts.length - 1];
+    line(prev[0], prev[1], zc0 + dz, Ro + dr, 'frame');
+  }
+  line(zc0, Ro, 0, Ro, 'frame');
   push(0, Ro, 'frame');
 
   // --- Koko silmukka: oikea puolikas + peilattu vasen puolikas -------------------
@@ -159,7 +186,7 @@ export function buildProfile(cfg) {
     outerRadius: Ro,
     sBoreMid: 0,
     sOuterMid: L / 2,
-    flatOuterHalf: a - f,
+    flatOuterHalf: a - cornerAxial,
     flatInnerHalf: zLip - cfg.lipChamfer - e,
     stations: { rFilletStart, rCrease, rCoveBottom, rLipTop, zLip, zGroove, zCoveIn },
   };

@@ -137,6 +137,10 @@ async function main() {
   const camera = new THREE.PerspectiveCamera(VIEW.fov, 1, 0.1, 500);
   const elev = THREE.MathUtils.degToRad(VIEW.elevationDeg);
   const camDir = new THREE.Vector3(0, Math.sin(elev), Math.cos(elev));
+  // Studio kääntyy kameran kallistuksen mukana: alkunäkymän heijastukset vastaavat
+  // virallisen tuotekuvan asetelmaa (vaakasuora kamera, sormus 43.5° kallistettuna).
+  // (etumerkki +: three.js:n PMREM-näytteistys peilaa y-akselin ennen kiertoa)
+  if (!matchMode) scene.environmentRotation.set(elev, 0, 0);
   const view = {
     zoom: 1,
     pan: new THREE.Vector3(),
@@ -150,12 +154,14 @@ async function main() {
   const placeCamera = () => {
     if (matchMode) {
       // Vertailutila: kamera täsmälleen Ouran virallisen tuotekuvan asennossa (sovitettu siluettiin)
-      camera.fov = 9.414;
-      camera.position.set(0, 0, 187.45);
+      camera.fov = 9.4157;
+      camera.position.set(0, 0, 187.21);
       camera.up.set(0, 1, 0);
       camera.lookAt(0, 0, 0);
       camera.near = 150;
       camera.far = 230;
+      // kuvakeskipisteen siirto (sovituksen cx, cy 1000 px kuvassa) – ei sormuksen siirtoa 3D:ssä
+      camera.setViewOffset(1000, 1000, 500 - 499.7783, 500 - 541.2199, 1000, 1000);
       camera.updateProjectionMatrix();
       return;
     }
@@ -173,8 +179,12 @@ async function main() {
   );
   ring.quaternion.copy(heroQuat);
   if (matchMode) {
-    ring.quaternion.setFromEuler(new THREE.Euler(0.7594, 0.0008, 0, 'YXZ'));
-    ring.position.set(-0.015, -1.262, 0);
+    ring.quaternion.setFromEuler(new THREE.Euler(0.75705, 0.00076, 0, 'YXZ'));
+    if (params.has('mask')) {
+      // Ääriviivavalidointi: valkoinen siluetti mustalla taustalla
+      scene.overrideMaterial = new THREE.MeshBasicNodeMaterial({ color: 0xffffff });
+      scene.backgroundNode = vec3(0);
+    }
   }
 
   // --- Jälkikäsittely ---------------------------------------------------------

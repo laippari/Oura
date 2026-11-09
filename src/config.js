@@ -13,20 +13,25 @@
 export const RING = {
   width: 6.09,
   thickness: 2.28,
-  innerRadius: 10.9,
+  innerRadius: 10.945,
 
   // Poikkileikkaus ulkoa sisään (säteittäiset mitat sivupinnalla, yhteensä 2.28 mm)
-  outerFillet: 0.55, // ulkoreunan pyöristys
-  land: 0.38, // tasainen sivupinta
+  // Ulkoreunan muoto sovitettu virallisen 8000 px tuotekuvan ääriviivaan (tools/fit_profile.py):
+  // ulkopinta kaartuu reunoilla isolla säteellä R1 kulman phi verran ja kohtaa sivupinnan
+  // lähes terävällä reunalla R2. Ääriviivavirhe: keskimäärin 0.009 mm, 95 % < 0.015 mm.
+  outerCorner: { R1: 2.7, R2: 0.05, phiDeg: 24.5 },
+  pvdSeamFromOuter: 0.55, // värillisen reunarenkaan ja titaanin raja sivupinnalla (säde ulkopinnasta)
+  creaseFromOuter: 0.95, // terävän reunalinjan paikka (säde ulkopinnasta)
   creaseRadius: 0.05, // terävä reunalinja tasaisen pinnan ja viisteen välissä
   cove: 0.68, // viiste kohti saumaa
   coveRecess: 0.2, // viisteen sisäreunan syvyys sivupinnasta
   coveBulge: 0.05,
   gap: 0.16, // ulkokehyksen ja sisäkuoren välinen sauma
   gapDepth: 0.24,
-  lipRecess: 0.24, // sisäkuoren reunuksen yläreunan syvyys sivupinnasta
-  lipChamfer: 0.36, // reunuksen viisteen aksiaalinen leveys
-  lipEdge: 0.12, // viisteen ja sisäpinnan välinen pyöristys
+  // Sisäreuna sovitettu ääriviivaan: sisäpinta päättyy ~0.2 mm sivupinnan tasosta.
+  lipRecess: 0.11, // sisäkuoren tasaisen reunuksen syvyys sivupinnan tasosta
+  lipChamfer: 0.085, // 45° reunaviiste sisäpinnan ja reunuksen välissä
+  lipEdge: 0.03, // viisteen reunojen pyöristys
 
   angularSegments: 480,
   profileMaxStep: 0.06,

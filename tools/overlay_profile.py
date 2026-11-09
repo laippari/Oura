@@ -28,7 +28,7 @@ img = np.array(bg.convert('RGB').resize((1000 * S, 1000 * S), Image.LANCZOS))
 
 W, T, Rin = 6.09, 2.28, c['innerRadius']
 A, Ro = W / 2, Rin + T
-fil, land, cove, gap, coveRec, lipRec, lipCh = 0.55, 0.38, 0.68, 0.16, 0.2, 0.24, 0.36
+fil, land, cove, gap, coveRec, lipRec, lipCh = 0.55, 0.40, 0.68, 0.16, 0.2, 0.11, 0.085
 rF = Ro - fil; rC = rF - land; rCB = rC - cove; rLT = rCB - gap
 cx_, sx = np.cos(c['tiltX']), np.sin(c['tiltX'])
 cy_, sy = np.cos(c['tiltY']), np.sin(c['tiltY'])

@@ -50,7 +50,12 @@ export function buildStudioScene() {
   const horizon = vec3(0.018, 0.018, 0.019);
   const lower = vec3(0.86, 0.855, 0.85);
   const up = mix(mix(horizon, upper, smoothstep(0.12, 0.42, dirY)), zenith, smoothstep(0.5, 0.92, dirY));
-  const low = mix(horizon, lower, smoothstep(0.12, 0.5, dirY.negate()));
+  // Pöytä: valkoinen takana, musta kangas kameran puolella aivan sormuksen alla.
+  // (Laskettu virallisista kuvista: sivupinta heijastaa ylä- ja alaosassa ~4.6° eri suuntiin
+  //  suoraan alas, ja kuvissa toinen on musta, toinen valkoinen → raja hieman kameran puolella.)
+  const dirZ = positionWorld.normalize().z;
+  const table = mix(lower, vec3(0.015, 0.015, 0.016), smoothstep(0.045, 0.085, dirZ));
+  const low = mix(horizon, table, smoothstep(0.12, 0.5, dirY.negate()));
   domeMat.colorNode = select(dirY.greaterThanEqual(0), up, low);
   scene.add(new THREE.Mesh(new THREE.SphereGeometry(40, 96, 48), domeMat));
 

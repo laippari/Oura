@@ -289,7 +289,7 @@ export function createMaterials({ envTexture, profile, windows, outerPatches, bo
   const shellF0 = new THREE.Color(0.6, 0.585, 0.56);
   const interiorParams = {
     R0: profile.innerRadius,
-    wallHalf: profile.halfWidth - 0.6,
+    wallHalf: profile.halfWidth - 0.3,
     wallF0: shellF0,
     wallRoughness: 0.1,
     windows: windows.map((w) => ({ th: w.thetaC, A: w.hA + 0.15, B: w.hB + 0.15 })),
