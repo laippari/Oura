@@ -273,10 +273,10 @@ export function createMaterials({ envTexture, profile, windows, outerPatches, bo
     const lowFreq = mx_noise_float(positionLocal.mul(0.9)).mul(0.01);
     const beadN = mx_noise_float(positionLocal.mul(25)).mul(0.07);
     let rough = fin.roughness.add(lowFreq).add(microR.mul(0.12).mul(fin.brushed.oneMinus()));
-    rough = rough.add(brushT.mul(0.16).mul(fin.brushed)).add(beadN.mul(fin.bead));
+    rough = rough.add(brushT.mul(0.24).mul(fin.brushed)).add(beadN.mul(fin.bead));
     rough = rough.add(mark.mul(0.06));
     m.roughnessNode = clamp(rough, 0.035, 0.75);
-    m.colorNode = vec3(fin.color).mul(float(1).add(brushT.mul(0.12).mul(fin.brushed)));
+    m.colorNode = vec3(fin.color).mul(float(1).add(brushT.mul(0.18).mul(fin.brushed)));
     m.anisotropyNode = vec2(fin.aniso, 0);
     m.aoNode = cavity;
     if (maskRegions) m.maskNode = patchMaskNode(maskRegions, profile.outerRadius);

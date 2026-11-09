@@ -11,7 +11,8 @@ Menetelmä (analysis-by-synthesis):
      Viralliset leveys 6,09 mm ja paksuus 2,28 mm pidetään kiinteinä.
   3. Ääriviiva rasteroidaan tarkasti (poikkileikkaus jokaisessa 0,25° kulmassa + niiden
      väliset pinnat) ja verrataan kuvan alfa-kanavaan (IoU). Nelder–Mead-optimointi useasta
-     lähtöpisteestä: ensin muoto kameran ollessa kiinteä, sitten muoto ja kamera yhdessä.
+     lähtöpisteestä: ensin haetaan perspektiivietäisyys (jokaisella etäisyydellä muu kamera
+     ja muoto sovitetaan yhdessä), sitten muoto, lopuksi muoto ja kamera yhdessä.
   4. Tuloksena parametrit ja ääriviivavirhe millimetreinä (keskiarvo, 95 %, maksimi).
 
 Käyttö:
@@ -37,8 +38,20 @@ ap.add_argument('--res', type=int, default=2000)
 ap.add_argument('--out', default='profile.json')
 args = ap.parse_args()
 
-N = args.res
-target = np.array(Image.open(args.image).convert('RGBA').resize((N, N), Image.LANCZOS))[..., 3] > 127
+_src = Image.open(args.image).convert('RGBA')
+_targets = {}
+
+
+def set_res(n):
+    global N, target, TH
+    N = n
+    TH = np.linspace(-np.pi, np.pi, 1441 if n >= 1500 else 541)
+    if n not in _targets:
+        _targets[n] = np.array(_src.resize((n, n), Image.LANCZOS))[..., 3] > 127
+    target = _targets[n]
+
+
+set_res(args.res)
 W, T = 6.09, 2.28
 A = W / 2
 TH = np.linspace(-np.pi, np.pi, 1441)
@@ -123,10 +136,34 @@ def contour_error(m, cam):
 
 
 c0 = json.load(open(args.cam))
-cam0 = np.array([c0['tiltX'], c0['tiltY'], c0['distance'], c0['focalPx'], c0['cx'], c0['cy']])
+cam_init = np.array([c0['tiltX'], c0['tiltY'], c0['distance'], c0['focalPx'], c0['cx'], c0['cy']])
 Ri0 = c0['innerRadius']
+starts = ([3.0, 0.05, np.radians(22), 0.12, 0.08], [1.5, 0.2, np.radians(35), 0.2, 0.2], [6.0, 0.05, np.radians(15), 0.05, 0.15])
+
+# Pelkkä siluetti erottelee perspektiivietäisyyden heikosti, joten se haetaan erikseen:
+# jokaisella etäisyydellä sovitetaan muu kamera (kallistus, polttoväli, keskipiste),
+# sisäsäde ja profiili yhdessä (nopeasti 1000 px tarkkuudella), ja paras etäisyys valitaan.
+def loss_fixedD(x, D):
+    cam = np.array([x[0], x[1], D, x[2], x[3], x[4]])
+    return loss(np.concatenate([cam, x[5:]]), True, cam)
+
+
+set_res(1000)
+cand = []
+for D in (140.0, 170.0, 200.0, 240.0, 300.0):
+    c = cam_init.copy()
+    x0 = np.array([c[0], c[1], c[3] * D / c[2], c[4], c[5], Ri0] + starts[0])
+    r = minimize(loss_fixedD, x0, args=(D,), method='Nelder-Mead',
+                 options={'maxiter': 700, 'xatol': 1e-5, 'fatol': 1e-8, 'adaptive': True})
+    print('etäisyys %.0f mm: IoU %.5f' % (D, 1 - r.fun), flush=True)
+    cand.append((r.fun, D, r.x))
+cand.sort(key=lambda t: t[0])
+_, D, x = cand[0]
+cam0 = np.array([x[0], x[1], D, x[2], x[3], x[4]])
+Ri0 = x[5]
+set_res(args.res)
 best = None
-for P0 in ([3.0, 0.05, np.radians(22), 0.12, 0.08], [1.5, 0.2, np.radians(35), 0.2, 0.2], [6.0, 0.05, np.radians(15), 0.05, 0.15]):
+for P0 in [list(x[6:])] + list(starts):
     r = minimize(loss, np.array([Ri0] + P0), args=(False, cam0), method='Nelder-Mead',
                  options={'maxiter': 1500, 'xatol': 1e-5, 'fatol': 1e-8, 'adaptive': True})
     print('vaihe A: IoU %.5f' % (1 - r.fun), np.round(r.x, 4).tolist(), flush=True)
