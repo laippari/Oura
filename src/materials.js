@@ -24,6 +24,12 @@ import {
   clamp,
   mix,
   mx_noise_float,
+  uniform,
+  vec2,
+  length,
+  min,
+  sin,
+  cos,
 } from 'three/tsl';
 
 const { Node } = THREE;
@@ -33,15 +39,6 @@ const { Node } = THREE;
 // Metallin heijastusväri F0 (lineaarinen sRGB). Raaka titaani on n. (0.54, 0.50, 0.45);
 // Ouran hopea PVD on vaaleampi ja neutraalimpi, lähellä kiillotettua terästä.
 // ---------------------------------------------------------------------------
-export const FINISH = {
-  name: 'Silver',
-  outerF0: new THREE.Color(0.615, 0.598, 0.572),
-  innerF0: new THREE.Color(0.585, 0.566, 0.536),
-  outerRoughness: 0.072,
-  innerRoughness: 0.15,
-  innerAnisotropy: 0.55,
-};
-
 // Hienot kiillotusnaarmut ja mikrovaihtelu karheuskarttana (kanvaasilla, ajonaikaisesti).
 // u kulkee kehää pitkin (~74 mm), v profiilia pitkin (~16 mm) -> 4:1 kuvasuhde.
 function createMicroSurfaceTexture(seed = 7) {
@@ -109,8 +106,8 @@ function createMicroSurfaceTexture(seed = 7) {
 // Kiillotetun renkaan sisäpinta heijastaa ennen kaikkea vastakkaista sisäseinää,
 // ei studiota. Ympäristökartta ei voi esittää tätä, joten heijastussäde jäljitetään
 // analyyttisesti renkaan omassa koordinaatistossa sylinteriä vasten (enintään 3 pomppua),
-// jokaisella pompulla metallin Fresnel-heijastus (Schlick). Sensorikuvut näkyvät
-// heijastuksissa tummina alueina. Lopuksi karkaava säde näytteistetään ympäristöstä.
+// jokaisella pompulla metallin Fresnel-heijastus (Schlick). Sensori-ikkunat näkyvät
+// heijastuksissa tummempina alueina. Lopuksi karkaava säde näytteistetään ympäristöstä.
 // ---------------------------------------------------------------------------
 class InteriorReflectionNode extends Node {
   static get type() {
@@ -148,10 +145,10 @@ class InteriorReflectionNode extends Node {
       // kulma kämmenen puolen keskilinjasta (θ = 0 on -Y)
       const th = atan(q.x, q.y.negate());
       let m = float(0);
-      for (const tc of P.domeAngles) {
-        const du = abs(th.sub(tc)).mul(P.R0).div(P.domeA);
-        const dv = abs(q.z).div(P.domeB);
-        const r = pow(du, P.domeN).add(pow(dv, P.domeN));
+      for (const w of P.windows) {
+        const du = abs(th.sub(w.th)).mul(P.R0).div(w.A);
+        const dv = abs(q.z).div(w.B);
+        const r = pow(du, 4).add(pow(dv, 4));
         m = max(m, float(1).sub(smoothstep(0.8, 1.1, r)));
       }
       return m;
@@ -182,7 +179,7 @@ class InteriorReflectionNode extends Node {
         const nrm = normalize(vec3(q.x.negate(), q.y.negate(), 0)).toVar();
         const cosT = clamp(dot(d.negate(), nrm), 0, 1);
         const fres = f0.add(vec3(1).sub(f0).mul(pow(float(1).sub(cosT), 5)));
-        const wallRefl = mix(fres, vec3(0.045), domeMask(q));
+        const wallRefl = mix(fres, fres.mul(P.windowReflect ?? 0.35), domeMask(q));
         through.assign(through.mul(wallRefl).mul(w));
         d.assign(reflect(d, nrm));
         p.assign(q);
@@ -193,89 +190,140 @@ class InteriorReflectionNode extends Node {
   }
 }
 
-export function createMaterials({ envTexture, profile, sensorCfg }) {
+
+// Kehän suuntainen harjausjälki (Brushed Silver): hienoja vaakaviivoja (u = kehä, v = profiili).
+function createBrushTexture(seed = 11) {
+  const W = 1024;
+  const H = 1024;
+  const c = document.createElement('canvas');
+  c.width = W;
+  c.height = H;
+  const ctx = c.getContext('2d');
+  let s = seed;
+  const rnd = () => ((s = (s * 16807) % 2147483647) / 2147483647);
+  ctx.fillStyle = 'rgb(128,128,128)';
+  ctx.fillRect(0, 0, W, H);
+  for (let i = 0; i < 9000; i++) {
+    const y = rnd() * H;
+    const x = rnd() * W;
+    const len = 60 + rnd() * 900;
+    const g = Math.floor(128 + (rnd() - 0.5) * 150);
+    ctx.strokeStyle = `rgba(${g},${g},${g},${0.25 + rnd() * 0.5})`;
+    ctx.lineWidth = 0.6 + rnd() * 1.1;
+    for (const ox of [-W, 0, W]) {
+      ctx.beginPath();
+      ctx.moveTo(x + ox, y);
+      ctx.lineTo(x + ox + len, y + (rnd() - 0.5) * 0.8);
+      ctx.stroke();
+    }
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.NoColorSpace;
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.anisotropy = 8;
+  tex.needsUpdate = true;
+  return tex;
+}
+
+// Laikkualueet, joilla rungon pinta piilotetaan (pyöristetyn suorakaiteen SDF renkaan omassa
+// koordinaatistossa). Laikku on reunastaan täsmälleen rungon pinnalla, joten saumaa ei näy.
+function patchMaskNode(regions, surfaceRadius, surfaceTol = 0.06) {
+  if (!regions.length) return null;
+  const p = positionLocal;
+  const th = atan(p.x, p.y.negate());
+  const rr = length(p.xy);
+  let inside = float(0);
+  for (const g of regions) {
+    const dth = atan(sin(th.sub(g.thetaC)), cos(th.sub(g.thetaC)));
+    const u = dth.mul(g.R);
+    const v = p.z.sub(g.zc);
+    const q = abs(vec2(u, v)).sub(vec2(g.hA - g.rc, g.hB - g.rc));
+    const sdf = length(max(q, 0)).add(min(max(q.x, q.y), 0)).sub(g.rc);
+    const inPatch = float(1).sub(smoothstep(g.margin * 0.7, g.margin * 0.72, sdf));
+    inside = max(inside, inPatch);
+  }
+  const onSurface = float(1).sub(smoothstep(surfaceTol, surfaceTol * 1.2, abs(rr.sub(surfaceRadius))));
+  // maskNode: true = piirrä
+  return inside.mul(onSurface).lessThan(0.5);
+}
+
+export function createMaterials({ envTexture, profile, windows, outerPatches, borePatches }) {
   const micro = createMicroSurfaceTexture();
-  const noLights = lights([]); // rengas valaistaan vain studioympäristöllä (IBL)
+  const brush = createBrushTexture();
+  const noLights = lights([]); // rengas valaistaan studioympäristöllä (IBL); suunnattu valo vain varjolle
 
   const cavity = attribute('cavity', 'float');
   const mark = attribute('mark', 'float');
+  const gapA = attribute('gap', 'float');
   const microR = texture(micro, uv()).r;
+  const brushT = texture(brush, uv().mul(vec2(1, 3))).r.sub(0.5);
 
-  // Ulkokehys: kiillotettu PVD-titaani
-  const outer = new THREE.MeshPhysicalNodeMaterial({
-    name: 'Ti-PVD Silver (outer)',
-    color: FINISH.outerF0,
-    metalness: 1,
-    roughness: FINISH.outerRoughness,
-  });
-  outer.lightsNode = noLights;
-  // hyvin hienovarainen karheusvaihtelu + naarmut
-  const lowFreq = mx_noise_float(positionLocal.mul(0.9)).mul(0.012);
-  const polished = clamp(float(FINISH.outerRoughness).add(lowFreq).add(microR.mul(0.16)), 0.04, 0.4);
-  // suuntausmerkin laseroitu pohja: mattapintainen ja hieman vaaleampi (näkyy "himmeänä merkkinä")
-  const frost = mx_noise_float(positionLocal.mul(38)).mul(0.08);
-  outer.roughnessNode = mix(polished, float(0.42).add(frost), mark);
-  outer.colorNode = mix(vec3(FINISH.outerF0.r, FINISH.outerF0.g, FINISH.outerF0.b), vec3(0.7, 0.69, 0.67), mark);
-  outer.aoNode = cavity;
+  // --- Ulkokehys: valittava virallinen viimeistely (uniformeilla, ei uudelleenkääntöä) ---
+  const fin = {
+    color: uniform(new THREE.Color(0.64, 0.63, 0.61)),
+    roughness: uniform(0.055),
+    aniso: uniform(0),
+    brushed: uniform(0),
+    bead: uniform(0),
+  };
+  const makeFrame = (name, maskRegions) => {
+    const m = new THREE.MeshPhysicalNodeMaterial({ name, metalness: 1 });
+    m.lightsNode = noLights;
+    const lowFreq = mx_noise_float(positionLocal.mul(0.9)).mul(0.01);
+    const beadN = mx_noise_float(positionLocal.mul(25)).mul(0.07);
+    let rough = fin.roughness.add(lowFreq).add(microR.mul(0.12).mul(fin.brushed.oneMinus()));
+    rough = rough.add(brushT.mul(0.16).mul(fin.brushed)).add(beadN.mul(fin.bead));
+    rough = rough.add(mark.mul(0.06));
+    m.roughnessNode = clamp(rough, 0.035, 0.75);
+    m.colorNode = vec3(fin.color).mul(float(1).add(brushT.mul(0.12).mul(fin.brushed)));
+    m.anisotropyNode = vec2(fin.aniso, 0);
+    m.aoNode = cavity;
+    if (maskRegions) m.maskNode = patchMaskNode(maskRegions, profile.outerRadius);
+    return m;
+  };
+  const outer = makeFrame('Frame (PVD finish)', outerPatches);
+  const outerPatch = makeFrame('Frame patch', null);
 
-  // Sisäkuori: hieno sorvattu satiini, anisotrooppinen + keskinäisheijastukset
+  // --- Sisäkuori: kiillotettu titaani, keskinäisheijastukset -------------------------
+  const shellF0 = new THREE.Color(0.6, 0.585, 0.56);
   const interiorParams = {
     R0: profile.innerRadius,
-    wallHalf: profile.halfWidth - 0.75,
-    wallF0: FINISH.innerF0,
-    wallRoughness: FINISH.innerRoughness,
-    domeAngles: [sensorCfg.angle, -sensorCfg.angle],
-    domeA: sensorCfg.halfLength,
-    domeB: sensorCfg.halfWidth,
-    domeN: sensorCfg.footprintExponent,
+    wallHalf: profile.halfWidth - 0.6,
+    wallF0: shellF0,
+    wallRoughness: 0.1,
+    windows: windows.map((w) => ({ th: w.thetaC, A: w.hA + 0.15, B: w.hB + 0.15 })),
+    windowReflect: 0.45,
   };
-  const inner = new THREE.MeshPhysicalNodeMaterial({
-    name: 'Ti inner shell',
-    color: FINISH.innerF0,
-    metalness: 1,
-    roughness: FINISH.innerRoughness,
-    anisotropy: FINISH.innerAnisotropy,
-  });
-  inner.lightsNode = noLights;
-  // sorvausjälki: kehän suuntaisia hienoja vaihteluita profiilin suunnassa
-  const lathe = mx_noise_float(vec3(uv().y.mul(520), 0.0, uv().x.mul(3))).mul(0.03);
-  inner.roughnessNode = clamp(float(FINISH.innerRoughness).add(lathe).add(microR.mul(0.08)), 0.06, 0.5);
-  inner.envNode = new InteriorReflectionNode(envTexture, interiorParams);
-  inner.aoNode = cavity;
+  const makeShell = (name, maskRegions) => {
+    const m = new THREE.MeshPhysicalNodeMaterial({ name, metalness: 1 });
+    m.lightsNode = noLights;
+    const lathe = mx_noise_float(vec3(uv().y.mul(520), 0.0, uv().x.mul(3))).mul(0.02);
+    const base = clamp(float(0.09).add(lathe).add(microR.mul(0.06)), 0.05, 0.4);
+    m.roughnessNode = mix(mix(base, float(0.22).add(mx_noise_float(positionLocal.mul(45)).mul(0.04)), mark), float(0.45), gapA);
+    m.colorNode = mix(vec3(shellF0.r, shellF0.g, shellF0.b), vec3(0.06, 0.06, 0.062), gapA);
+    m.envNode = new InteriorReflectionNode(envTexture, interiorParams);
+    m.aoNode = cavity;
+    if (maskRegions) m.maskNode = patchMaskNode(maskRegions, profile.innerRadius);
+    return m;
+  };
+  const inner = makeShell('Inner shell (titanium)', borePatches);
+  const innerPatch = makeShell('Inner shell patch', null);
 
-  // Sensorikupu: tummaksi sävytetty optinen hartsi (läpäisy + taittuminen)
-  const dome = new THREE.MeshPhysicalNodeMaterial({
-    name: 'Sensor dome resin',
+  // --- Sensori-ikkunan linssi: kirkas optinen epoksi --------------------------------
+  const lens = new THREE.MeshPhysicalNodeMaterial({
+    name: 'Sensor lens',
     color: new THREE.Color(1, 1, 1),
     metalness: 0,
-    roughness: 0.045,
+    roughness: 0.03,
     transmission: 1,
-    ior: 1.52,
-    thickness: 0.55,
-    attenuationColor: new THREE.Color(0.14, 0.142, 0.152),
-    attenuationDistance: 0.3,
+    ior: 1.5,
+    thickness: 0.7,
+    attenuationColor: new THREE.Color(0.96, 0.975, 0.97),
+    attenuationDistance: 3,
     specularIntensity: 1,
   });
-  dome.lightsNode = noLights;
-  dome.envNode = new InteriorReflectionNode(envTexture, { ...interiorParams, domeAngles: [] });
-
-  const gasket = new THREE.MeshPhysicalNodeMaterial({
-    name: 'Aperture gap',
-    color: new THREE.Color(0.006, 0.006, 0.007),
-    roughness: 0.55,
-    metalness: 0,
-  });
-  gasket.lightsNode = noLights;
-
-  const pcb = new THREE.MeshPhysicalNodeMaterial({
-    name: 'Sensor floor',
-    color: new THREE.Color(0.012, 0.013, 0.014),
-    roughness: 0.42,
-    metalness: 0,
-    clearcoat: 0.6,
-    clearcoatRoughness: 0.25,
-  });
-  pcb.lightsNode = noLights;
+  lens.lightsNode = noLights;
 
   const std = (name, params) => {
     const m = new THREE.MeshPhysicalNodeMaterial({ name, ...params });
@@ -284,24 +332,42 @@ export function createMaterials({ envTexture, profile, sensorCfg }) {
   };
 
   const internals = {
-    ledBody: std('LED reflector body', { color: new THREE.Color(0.78, 0.77, 0.73), roughness: 0.38, clearcoat: 0.8, clearcoatRoughness: 0.12 }),
-    ledCup: std('LED reflector cup', { color: new THREE.Color(0.9, 0.9, 0.88), roughness: 0.22, metalness: 0.0 }),
-    dieGreen: std('InGaN die', { color: new THREE.Color(0.06, 0.1, 0.075), roughness: 0.12, metalness: 0.2, clearcoat: 1, clearcoatRoughness: 0.05, sheen: 0.4, sheenColor: new THREE.Color(0.1, 0.5, 0.2) }),
-    dieRed: std('AlGaInP die', { color: new THREE.Color(0.18, 0.025, 0.02), roughness: 0.15, metalness: 0.25, clearcoat: 1, clearcoatRoughness: 0.05 }),
-    dieIR: std('GaAs die', { color: new THREE.Color(0.05, 0.05, 0.055), roughness: 0.2, metalness: 0.35, clearcoat: 1, clearcoatRoughness: 0.05 }),
-    pdBody: std('PD body', { color: new THREE.Color(0.01, 0.01, 0.011), roughness: 0.5 }),
-    silicon: std('Si photodiode (AR coated)', {
-      color: new THREE.Color(0.03, 0.035, 0.09),
-      roughness: 0.08,
-      metalness: 0.4,
-      iridescence: 1,
-      iridescenceIOR: 2.0,
-      iridescenceThicknessRange: [180, 320],
+    ledSubstrate: std('LED ceramic substrate', { color: new THREE.Color(0.86, 0.86, 0.84), roughness: 0.42 }),
+    greenZone: std('Green emitter (silicone)', {
+      color: new THREE.Color(0.72, 0.9, 0.76),
+      roughness: 0.25,
+      emissive: new THREE.Color(0.2, 0.9, 0.42),
+      emissiveIntensity: 0.32,
     }),
-    aluminium: std('Al metallization', { color: new THREE.Color(0.91, 0.92, 0.92), metalness: 1, roughness: 0.32 }),
-    gold: std('Au', { color: new THREE.Color(1.0, 0.766, 0.336), metalness: 1, roughness: 0.22 }),
-    barrier: std('Optical barrier', { color: new THREE.Color(0.008, 0.008, 0.009), roughness: 0.7 }),
+    redZone: std('Red/IR emitter (silicone)', {
+      color: new THREE.Color(0.95, 0.7, 0.6),
+      roughness: 0.25,
+      emissive: new THREE.Color(1.0, 0.4, 0.26),
+      emissiveIntensity: 0.3,
+    }),
+    dieGreen: std('InGaN die', { color: new THREE.Color(0.32, 0.62, 0.42), roughness: 0.15, metalness: 0.1, emissive: new THREE.Color(0.25, 1, 0.5), emissiveIntensity: 0.35, clearcoat: 1 }),
+    dieRed: std('AlGaInP die', { color: new THREE.Color(0.85, 0.45, 0.33), roughness: 0.18, emissive: new THREE.Color(1, 0.4, 0.25), emissiveIntensity: 0.25 }),
+    dieIR: std('GaAs IR die', { color: new THREE.Color(0.72, 0.42, 0.34), roughness: 0.2, emissive: new THREE.Color(0.9, 0.35, 0.22), emissiveIntensity: 0.18 }),
+    pdBody: std('PD package', { color: new THREE.Color(0.02, 0.02, 0.022), roughness: 0.5 }),
+    silicon: std('Si photodiode (AR coated)', {
+      color: new THREE.Color(0.03, 0.031, 0.034),
+      roughness: 0.16,
+      metalness: 0.3,
+      iridescence: 0.18,
+      iridescenceIOR: 1.9,
+      iridescenceThicknessRange: [220, 300],
+    }),
+    aluminium: std('Al metallization', { color: new THREE.Color(0.3, 0.31, 0.32), metalness: 1, roughness: 0.45 }),
+    gold: std('Au', { color: new THREE.Color(1.0, 0.766, 0.336), metalness: 1, roughness: 0.2 }),
   };
 
-  return { outer, inner, dome, gasket, pcb, internals, microTexture: micro };
+  const setFinish = (f) => {
+    fin.color.value.setRGB(f.f0[0], f.f0[1], f.f0[2]);
+    fin.roughness.value = f.roughness;
+    fin.aniso.value = f.aniso;
+    fin.brushed.value = f.brushed;
+    fin.bead.value = f.bead || 0;
+  };
+
+  return { outer, outerPatch, inner, innerPatch, lens, internals, setFinish };
 }

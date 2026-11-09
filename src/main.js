@@ -1,12 +1,12 @@
 import * as THREE from 'three/webgpu';
-import { pass, renderOutput, screenUV, screenCoordinate, rand, vec2, vec3, vec4, float, length, smoothstep, mix } from 'three/tsl';
+import { pass, renderOutput, screenUV, screenCoordinate, rand, vec2, vec3, vec4, float, length, smoothstep, mix, uniform } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { ssaaPass } from 'three/addons/tsl/display/SSAAPassNode.js';
 
-import { RING, SENSORS, VIEW } from './config.js';
+import { RING, SENSORS, FEATURES, FINISHES, VIEW } from './config.js';
 import { buildProfile } from './geometry/profile.js';
 import { buildBandGeometry } from './geometry/band.js';
-import { createSensorModel, createSensorInternals } from './geometry/sensors.js';
+import { buildRecessPatch, buildLens, buildLEDInternals, buildPDInternals } from './geometry/features.js';
 import { createMaterials } from './materials.js';
 import { createEnvironment, createBackgroundNode, createGround } from './studio.js';
 import { InspectControls } from './controls.js';
@@ -43,34 +43,95 @@ async function main() {
   // --- Malli -----------------------------------------------------------------
   const profile = buildProfile(RING);
   const band = buildBandGeometry(profile, RING);
-  const mats = createMaterials({ envTexture, profile, sensorCfg: SENSORS });
+  const Ri = profile.innerRadius;
+  const Ro = profile.outerRadius;
+  const deg = THREE.MathUtils.degToRad;
+
+  // Sensori-ikkunat: LEDit ±34°, fotodiodit ±60° (mitattu virallisista kuvista)
+  const L = SENSORS.lens;
+  const P = SENSORS.pocket;
+  const windows = [];
+  for (const sgn of [1, -1]) {
+    windows.push({ kind: 'led', thetaC: sgn * deg(SENSORS.led.angleDeg), sgn, hA: L.halfLength, hB: L.halfWidth });
+    windows.push({ kind: 'pd', thetaC: sgn * deg(SENSORS.pd.angleDeg), sgn, hA: L.halfLength, hB: L.halfWidth });
+  }
+  const pocketA = L.halfLength + P.margin;
+  const pocketB = L.halfWidth + P.margin;
+  const pocketR = L.corner + P.margin;
+  const patchMargin = 0.28;
+  const borePatches = windows.map((w) => ({ thetaC: w.thetaC, R: Ri, zc: 0, hA: pocketA, hB: pocketB, rc: pocketR, margin: patchMargin }));
+  const F = FEATURES;
+  borePatches.push({ thetaC: Math.PI, R: Ri, zc: 0, hA: F.pad.halfLength, hB: F.pad.halfWidth, rc: F.pad.corner, margin: patchMargin });
+  const outerPatches = [{ thetaC: 0, R: Ro, zc: 0, hA: F.mark.halfLength, hB: F.mark.halfWidth, rc: F.mark.corner, margin: patchMargin }];
+
+  const mats = createMaterials({ envTexture, profile, windows, outerPatches, borePatches });
 
   const ring = new THREE.Group();
   ring.name = 'Oura Ring 5';
   const bandMesh = new THREE.Mesh(band.geometry, [mats.outer, mats.inner]);
-  bandMesh.name = 'titanium-band';
+  bandMesh.name = 'band';
   bandMesh.castShadow = true;
   ring.add(bandMesh);
 
-  const sensor = createSensorModel(profile, SENSORS);
-  for (const sgn of [1, -1]) {
-    const th = sgn * SENSORS.angle;
-    const dome = new THREE.Mesh(sensor.domeGeometry(th), mats.dome);
-    dome.name = 'sensor-dome';
-    dome.castShadow = true;
-    dome.renderOrder = 2;
-    const gap = new THREE.Mesh(sensor.footprintRing(th, 0.992, 1.065, 0.0035), mats.gasket);
-    const floor = new THREE.Mesh(sensor.footprintRing(th, 0, 0.995, 0.05), mats.pcb);
-    const internals = createSensorInternals(sensor, th, -sgn, mats.internals);
-    ring.add(dome, gap, floor, internals);
+  const sOfBore = (z) => z;
+  const sOfOuter = (z) => profile.sOuterMid - z;
+  const add = (geo, mat, name) => {
+    const m = new THREE.Mesh(geo, mat);
+    m.name = name;
+    m.castShadow = true;
+    ring.add(m);
+    return m;
+  };
+  for (const w of windows) {
+    add(
+      buildRecessPatch({ surface: 'bore', R: Ri, thetaC: w.thetaC, hA: pocketA, hB: pocketB, rc: pocketR, margin: patchMargin, depth: P.depth, bevel: P.bevel, floorGap: 1, sOf: sOfBore, L: profile.length }),
+      mats.innerPatch,
+      w.kind + '-pocket'
+    );
+    const isLED = w.kind === 'led';
+    const lens = add(
+      buildLens({ R: Ri, thetaC: w.thetaC, hA: L.halfLength, hB: L.halfWidth, rc: L.corner, H: isLED ? SENSORS.led.height : SENSORS.pd.height, rr: isLED ? L.edgeRadiusLED : L.edgeRadiusPD, base: -P.depth }),
+      mats.lens,
+      w.kind + '-lens'
+    );
+    lens.renderOrder = 2;
+    // dir = suunta kohti fotodiodia u-akselilla (LED) / poispäin keskilinjasta (PD)
+    const dir = w.sgn;
+    ring.add(isLED ? buildLEDInternals(Ri, w.thetaC, dir, mats.internals) : buildPDInternals(Ri, w.thetaC, dir, mats.internals));
   }
+  add(
+    buildRecessPatch({ surface: 'bore', R: Ri, thetaC: Math.PI, hA: F.pad.halfLength, hB: F.pad.halfWidth, rc: F.pad.corner, margin: patchMargin, depth: F.pad.depth, bevel: F.pad.bevel, floorMark: 1, sOf: sOfBore, L: profile.length }),
+    mats.innerPatch,
+    'inner-pad'
+  );
+  add(
+    buildRecessPatch({ surface: 'outer', R: Ro, thetaC: 0, hA: F.mark.halfLength, hB: F.mark.halfWidth, rc: F.mark.corner, margin: patchMargin, depth: F.mark.depth, bevel: F.mark.bevel, floorMark: 0.5, sOf: sOfOuter, L: profile.length }),
+    mats.outerPatch,
+    'orientation-mark'
+  );
   scene.add(ring);
+
+  // --- Viimeistely (viralliset värit) -----------------------------------------
+  let finishIndex = Math.max(0, FINISHES.findIndex((f) => f.id === (params.get('finish') || 'silver')));
+  const applyFinish = (i) => {
+    finishIndex = i;
+    const f = FINISHES[i];
+    mats.setFinish(f);
+    document.querySelectorAll('#finishes button').forEach((b, k) => b.setAttribute('aria-pressed', k === i ? 'true' : 'false'));
+    $('finish-name').textContent = f.name;
+    requestRender?.();
+  };
 
   // Lattia + kontaktivarjo
   const boundR = Math.hypot(profile.outerRadius, profile.halfWidth);
+  const matchMode = params.has('match');
   const floorY = -(boundR + 1.6);
   const ground = createGround(floorY);
   scene.add(ground.group);
+  if (matchMode) {
+    ground.group.visible = false;
+    scene.backgroundNode.plain.value = 1;
+  }
 
   // --- Kamera ----------------------------------------------------------------
   const camera = new THREE.PerspectiveCamera(VIEW.fov, 1, 0.1, 500);
@@ -87,6 +148,17 @@ async function main() {
     },
   };
   const placeCamera = () => {
+    if (matchMode) {
+      // Vertailutila: kamera täsmälleen Ouran virallisen tuotekuvan asennossa (sovitettu siluettiin)
+      camera.fov = 9.414;
+      camera.position.set(0, 0, 187.45);
+      camera.up.set(0, 1, 0);
+      camera.lookAt(0, 0, 0);
+      camera.near = 150;
+      camera.far = 230;
+      camera.updateProjectionMatrix();
+      return;
+    }
     const dist = view.fitDistance * view.zoom;
     camera.position.copy(view.pan).addScaledVector(camDir, dist);
     camera.lookAt(view.pan);
@@ -100,12 +172,17 @@ async function main() {
     new THREE.Euler(...VIEW.heroEuler.map((d) => THREE.MathUtils.degToRad(d)), 'YXZ')
   );
   ring.quaternion.copy(heroQuat);
+  if (matchMode) {
+    ring.quaternion.setFromEuler(new THREE.Euler(0.7594, 0.0008, 0, 'YXZ'));
+    ring.position.set(-0.015, -1.262, 0);
+  }
 
   // --- Jälkikäsittely ---------------------------------------------------------
+  const vignetteAmount = uniform(matchMode ? 0 : 1);
   const finish = (colorNode) => {
-    const glow = bloom(colorNode, 0.14, 0.38, 0.9);
+    const glow = bloom(colorNode, 0.1, 0.35, 1.2);
     const d = length(screenUV.sub(vec2(0.5)).mul(vec2(1.0, 1.15)));
-    const vignette = mix(float(1), float(0.82), smoothstep(0.35, 0.95, d));
+    const vignette = mix(float(1), mix(float(1), float(0.86), vignetteAmount), smoothstep(0.35, 0.95, d));
     const graded = colorNode.rgb.add(glow.rgb).mul(vignette);
     const out = renderOutput(vec4(graded, 1));
     // ±½ LSB:n kohina estää tummien liukuvärien raitautumisen 8-bittisillä näytöillä
@@ -143,7 +220,7 @@ async function main() {
   };
 
   // --- Ohjaus ----------------------------------------------------------------
-  let autoRotate = !params.has('still');
+  let autoRotate = !params.has('still') && !matchMode;
   let resetAnim = null;
   const hint = $('hint');
   const dismissHint = () => hint.classList.add('hidden');
@@ -259,6 +336,22 @@ async function main() {
       window.__hqFrames = (window.__hqFrames || 0) + 1;
     }
   });
+
+  // Värivalitsin
+  const bar = $('finishes');
+  FINISHES.forEach((f, i) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.id = 'finish-' + f.id;
+    b.title = f.name;
+    b.setAttribute('aria-label', f.name);
+    b.style.setProperty('--sw-a', f.swatch[0]);
+    b.style.setProperty('--sw-b', f.swatch[1]);
+    if (f.brushed) b.classList.add('brushed');
+    b.addEventListener('click', () => applyFinish(i));
+    bar.appendChild(b);
+  });
+  applyFinish(finishIndex);
 
   new ResizeObserver(resize).observe(container);
   resize();

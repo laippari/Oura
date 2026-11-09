@@ -3,18 +3,22 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-  <meta name="theme-color" content="#0b0b0c">
-  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#d6d5d2">
+  <meta name="color-scheme" content="light">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="description" content="Oura Ring 5 (Silver, titaani) – fysikaalisesti renderöity 3D-malli, WebGPU.">
+  <meta name="description" content="Oura Ring 5 – virallisista tuotekuvista mitattu, fysikaalisesti renderöity 3D-malli kaikilla virallisilla väreillä. WebGPU.">
   <title>Oura Ring 5</title>
   <style>
+    /* Vaalea tuotekuvausstudio; käyttöliittymänä vain kierto/zoomaus ja viralliset värit. */
     :root {
-      --bg: #0b0b0c;
-      --fg: rgba(236, 234, 230, 0.86);
-      --muted: rgba(236, 234, 230, 0.5);
+      color-scheme: light;
+      --bg: #d6d5d2;
+      --fg: rgba(28, 27, 26, 0.88);
+      --muted: rgba(28, 27, 26, 0.5);
+      --chip: rgba(250, 249, 247, 0.62);
+      --ring: rgba(28, 27, 26, 0.85);
     }
     html, body {
       margin: 0;
@@ -56,33 +60,78 @@
       width: 22px;
       height: 22px;
       border-radius: 50%;
-      border: 1.5px solid rgba(255, 255, 255, 0.14);
-      border-top-color: rgba(255, 255, 255, 0.7);
+      border: 1.5px solid rgba(0, 0, 0, 0.12);
+      border-top-color: rgba(0, 0, 0, 0.55);
       animation: spin 0.9s linear infinite;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
     body.ready #loading { opacity: 0; }
-    #hint {
+
+    #ui {
       position: fixed;
-      left: 50%;
-      bottom: max(22px, env(safe-area-inset-bottom));
-      transform: translateX(-50%);
-      padding: 9px 14px;
-      border-radius: 999px;
-      background: rgba(20, 20, 22, 0.55);
-      -webkit-backdrop-filter: blur(12px);
-      backdrop-filter: blur(12px);
-      color: var(--fg);
-      white-space: nowrap;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      padding: 0 max(16px, env(safe-area-inset-right)) max(18px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
       pointer-events: none;
       opacity: 0;
-      transition: opacity 0.8s ease;
-      font-size: 12px;
+      transition: opacity 0.6s ease;
     }
-    body.ready #hint { opacity: 1; }
-    body.ready #hint.hidden { opacity: 0; }
-    #hint b { font-weight: 600; }
-    #hint i { font-style: normal; color: var(--muted); margin: 0 6px; }
+    body.ready #ui { opacity: 1; }
+    #finish-name {
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--fg);
+    }
+    #finishes {
+      display: flex;
+      gap: 12px;
+      padding: 9px 14px;
+      border-radius: 999px;
+      background: var(--chip);
+      -webkit-backdrop-filter: blur(14px) saturate(1.2);
+      backdrop-filter: blur(14px) saturate(1.2);
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+      pointer-events: auto;
+    }
+    #finishes button {
+      width: 26px;
+      height: 26px;
+      padding: 0;
+      border: 0;
+      border-radius: 50%;
+      cursor: pointer;
+      background: radial-gradient(circle at 32% 28%, var(--sw-a) 0%, var(--sw-b) 78%);
+      box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.14), 0 0 0 2px transparent;
+      transition: box-shadow 0.2s ease, transform 0.2s ease;
+    }
+    #finishes button.brushed {
+      background:
+        repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.18) 0 1px, rgba(0, 0, 0, 0.05) 1px 2px),
+        radial-gradient(circle at 32% 28%, var(--sw-a) 0%, var(--sw-b) 78%);
+    }
+    #finishes button[aria-pressed="true"] {
+      box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.14), 0 0 0 2px var(--bg), 0 0 0 3.5px var(--ring);
+    }
+    #finishes button:focus-visible {
+      outline: 2px solid var(--ring);
+      outline-offset: 3px;
+    }
+    #hint {
+      font-size: 11.5px;
+      color: var(--muted);
+      white-space: nowrap;
+      transition: opacity 0.8s ease;
+    }
+    #hint.hidden { opacity: 0; }
+    #hint b { font-weight: 600; color: var(--fg); }
+    #hint i { font-style: normal; margin: 0 5px; }
     #backend {
       position: fixed;
       right: max(12px, env(safe-area-inset-right));
@@ -90,7 +139,7 @@
       font-size: 10px;
       letter-spacing: 0.08em;
       text-transform: uppercase;
-      color: rgba(236, 234, 230, 0.28);
+      color: rgba(28, 27, 26, 0.3);
       pointer-events: none;
     }
     #error {
@@ -102,7 +151,11 @@
       color: var(--fg);
     }
     @media (max-width: 380px) {
-      #hint { font-size: 11px; padding: 8px 12px; }
+      #finishes { gap: 9px; padding: 8px 11px; }
+      #finishes button { width: 24px; height: 24px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      #loading span { animation: none; }
     }
   </style>
   <script type="importmap">
@@ -119,7 +172,11 @@
 <body>
   <div id="viewer"></div>
   <div id="loading"><span></span></div>
-  <div id="hint"><b>Vedä</b> kierrä<i>·</i><b>Nipistä</b> zoomaa<i>·</i><b>2× napautus</b> palauta</div>
+  <div id="ui">
+    <div id="hint"><b>Vedä</b> kierrä<i>·</i><b>Nipistä</b> zoomaa<i>·</i><b>2× napautus</b> palauta</div>
+    <div id="finish-name"></div>
+    <div id="finishes" role="group" aria-label="Väri"></div>
+  </div>
   <div id="backend"></div>
   <div id="error" hidden></div>
   <script type="module" src="./src/main.js"></script>

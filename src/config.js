@@ -1,52 +1,71 @@
-// Oura Ring 5 – mitat ja mallin parametrit.
-// Kaikki pituudet millimetreinä (1 yksikkö = 1 mm).
+// Oura Ring 5 – mitat ja mallin parametrit. Kaikki pituudet millimetreinä.
 //
-// Viralliset luvut (Oura, "Discover Oura Ring 5" / "Introducing Oura Ring 5"):
-//   leveys 6.09 mm, paksuus 2.28 mm, sensorikuvun korkeus 0.7 mm,
-//   2 × tri-LED + 2 × fotodiodi (12 signaalipolkua), titaanirunko + titaaninen sisäkuori,
-//   PVD-pinnoite, suuntausmerkki (kuoppa) kämmenen puolella.
-// Muut muodot (profiilin kaarevuudet, kupujen jalanjälki ja sijoittelu) on arvioitu
-// tuotekuvien ja Ring 4:n rakenteen perusteella.
+// Viralliset luvut (Oura): leveys 6.09 mm, paksuus 2.28 mm, sensorikuvun korkeus 0.7 mm,
+// 2 × tri-LED + 2 × fotodiodi, titaaninen ulkokehys + titaaninen sisäkuori, PVD-pinnoite.
+//
+// Muoto ja yksityiskohdat on mitattu Ouran virallisista tuotekuvista (ks. README):
+//  • kameran asento sovitettiin 8000 px:n tuotekuvan siluettiin (IoU 0.99), jolloin
+//    sivupinnan vyöhykkeet, sensorien paikat ja koot voitiin mitata millimetreinä;
+//  • akselin suuntaisista sivukuvista mitattiin sensorien kulma-asemat (perspektiivikorjattu).
+// Virallisten kuvien sormus on kooltaan sisähalkaisijaltaan ≈ 21.8 mm; malli käyttää samaa kokoa,
+// jotta se on suoraan verrattavissa kuviin.
 
 export const RING = {
   width: 6.09,
   thickness: 2.28,
-  innerDiameter: 18.95, // US-koko 9
+  innerRadius: 10.9,
 
-  // Poikkileikkaus: kaksi superellipsin puolikasta, jotka kohtaavat sivuilla
-  // pystysuorin tangentein (G2-jatkuva, "pillow"-profiili).
-  innerHalfHeight: 0.86, // sisäpuolikkaan korkeus jakolinjasta
-  outerExponent: 2.3, // ulkopinnan kaarevuus (2 = ellipsi, suurempi = kulmikkaampi)
-  innerExponent: 3.7, // sisäpinnan "comfort fit" -muoto
+  // Poikkileikkaus ulkoa sisään (säteittäiset mitat sivupinnalla, yhteensä 2.28 mm)
+  outerFillet: 0.55, // ulkoreunan pyöristys
+  land: 0.38, // tasainen sivupinta
+  creaseRadius: 0.05, // terävä reunalinja tasaisen pinnan ja viisteen välissä
+  cove: 0.68, // viiste kohti saumaa
+  coveRecess: 0.2, // viisteen sisäreunan syvyys sivupinnasta
+  coveBulge: 0.05,
+  gap: 0.16, // ulkokehyksen ja sisäkuoren välinen sauma
+  gapDepth: 0.24,
+  lipRecess: 0.24, // sisäkuoren reunuksen yläreunan syvyys sivupinnasta
+  lipChamfer: 0.36, // reunuksen viisteen aksiaalinen leveys
+  lipEdge: 0.12, // viisteen ja sisäpinnan välinen pyöristys
 
-  // Sisäkuoren ja ulkokehyksen välinen hiussauma sivupinnoilla
-  seam: { t: 0.34, width: 0.018, depth: 0.011 },
-
-  // Suuntauskuoppa ulkopinnalla, kämmenen puolella (θ = 0)
-  dimple: { halfArc: 0.17, halfAxial: 0.5, depth: 0.03 },
-
-  // Tessellointi
-  angularSegments: 420,
-  profileMaxStep: 0.07,
-  profileMaxTurnDeg: 1.25,
+  angularSegments: 480,
+  profileMaxStep: 0.06,
+  profileMaxTurnDeg: 2.0,
 };
 
+// Sensori-ikkunat (mitattu virallisista kuvista). Kulmat kämmenen puolen keskilinjasta.
 export const SENSORS = {
-  height: 0.7, // virallinen kuvun korkeus
-  halfLength: 1.68, // kehän suuntaan
-  halfWidth: 1.14, // akselin suuntaan
-  footprintExponent: 3.4,
-  shoulderK: 4.2, // tasaisen "flat-top" -kuvun olkapään muoto
-  shoulderM: 2.3,
-  angle: 0.305, // kupujen keskikohdat ±θ kämmenen puolen keskilinjasta (rad)
+  led: { angleDeg: 34, height: 0.78 },
+  pd: { angleDeg: 60, height: 0.6 },
+  lens: { halfLength: 1.9, halfWidth: 1.6, corner: 0.75, edgeRadiusLED: 0.56, edgeRadiusPD: 0.44 },
+  pocket: { margin: 0.13, depth: 0.08, bevel: 0.07 },
 };
+
+// Muut pinnan yksityiskohdat
+export const FEATURES = {
+  // Suuntausmerkki ulkopinnalla kämmenen puolella (θ = 0): stadionin muotoinen upotus
+  mark: { halfLength: 0.9, halfWidth: 1.55, corner: 0.88, depth: 0.05, bevel: 0.05 },
+  // Sisäpinnan yläosan tasainen levy (θ = 180°)
+  pad: { halfLength: 2.3, halfWidth: 1.4, corner: 0.9, depth: 0.018, bevel: 0.04 },
+};
+
+// Viralliset värivaihtoehdot. Ulkokehys saa värin, sisäkuori on aina luonnonvärinen titaani.
+// F0 = metallin heijastusväri lineaarisena sRGB:nä (kalibroitu virallisia kuvia vasten).
+export const FINISHES = [
+  { id: 'silver', name: 'Silver', f0: [0.64, 0.63, 0.61], roughness: 0.055, aniso: 0, brushed: 0, swatch: ['#f4f4f4', '#9a9a9a'] },
+  { id: 'black', name: 'Black', f0: [0.042, 0.042, 0.045], roughness: 0.06, aniso: 0, brushed: 0, swatch: ['#5a5a5c', '#0c0c0d'] },
+  { id: 'stealth', name: 'Stealth', f0: [0.075, 0.075, 0.078], roughness: 0.45, aniso: 0, brushed: 0, bead: 1, swatch: ['#3a3a3b', '#1d1d1e'] },
+  { id: 'brushed-silver', name: 'Brushed Silver', f0: [0.63, 0.62, 0.605], roughness: 0.2, aniso: 0.3, brushed: 1, swatch: ['#e2e2e2', '#a8a8a8'] },
+  { id: 'gold', name: 'Gold', f0: [0.9, 0.78, 0.56], roughness: 0.055, aniso: 0, brushed: 0, swatch: ['#f3e6c8', '#b89a62'] },
+  { id: 'deep-rose', name: 'Deep Rose', f0: [0.79, 0.555, 0.45], roughness: 0.055, aniso: 0, brushed: 0, swatch: ['#efcdb9', '#8f5a45'] },
+];
 
 export const VIEW = {
-  fov: 26,
-  elevationDeg: 13,
-  fitMargin: 1.18,
-  minZoom: 0.11,
+  fov: 18,
+  elevationDeg: 10,
+  fitMargin: 1.12,
+  minZoom: 0.09,
   maxZoom: 1.6,
-  // alkuasento (astetta, järjestys YXZ)
-  heroEuler: [24, -36, 0],
+  // Alkuasento: sama suhteellinen kulma kuin Ouran virallisessa tuotekuvassa (43.5°)
+  heroEuler: [33.5, 0, 0],
 };

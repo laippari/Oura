@@ -1,27 +1,34 @@
 import * as THREE from 'three/webgpu';
-import { float, vec2, vec3, uv, smoothstep, screenUV, length, mix, positionWorld, pow, clamp, max } from 'three/tsl';
+import { vec2, vec3, uv, smoothstep, screenUV, length, mix, positionWorld, uniform, select } from 'three/tsl';
 
 // ---------------------------------------------------------------------------
-// Studioympäristö kiillotetulle metallille.
+// Kirkas tuotekuvausstudio (kuten Ouran virallisissa kuvissa).
 //
-// Kiillotettu metalli näyttää vain sen, mitä se heijastaa. Siksi valaistus on
-// rakennettu kuten tuotekuvausstudio: suuret pehmeäreunaiset softboxit, kapeat
-// "strip light" -valot reunaheijastuksia varten, takavalo sekä tumma ympäristö,
-// joka antaa heijastuksille kontrastia. Näkymä renderöidään kuutiokarttaan ja
-// esisuodatetaan (PMREM) karheustasoille.
+// Kiillotettu metalli näyttää vain sen, mitä se heijastaa: valkoinen "valoteltta"
+// (kupoli + suuret softboxit) antaa hopealle sen kirkkaan perussävyn, ja kapeat mustat
+// "flagit" piirtävät reunoihin terävät tummat juovat, jotka määrittävät muodon.
+// Näkymä renderöidään kuutiokarttaan ja esisuodatetaan (PMREM) karheustasoille.
 // ---------------------------------------------------------------------------
 
-function softbox(width, height, intensity, softness = 0.12, tint = [1, 1, 1], hotspot = 0.25) {
+function softbox(width, height, intensity, softness = 0.12, tint = [1, 1, 1]) {
   const mat = new THREE.MeshBasicNodeMaterial({ side: THREE.DoubleSide });
   const p = uv();
   const ex = smoothstep(0, softness, p.x).mul(smoothstep(0, softness, p.x.oneMinus()));
   const ey = smoothstep(0, softness * (width / height), p.y).mul(smoothstep(0, softness * (width / height), p.y.oneMinus()));
-  // diffuusorikankaan lievä keskikirkkaus
-  const c = length(p.sub(0.5).mul(vec2(1, 1))).mul(1.6);
-  const center = float(1 - hotspot).add(float(hotspot).mul(float(1).sub(clamp(c, 0, 1))));
-  mat.colorNode = vec3(tint[0], tint[1], tint[2]).mul(intensity).mul(ex).mul(ey).mul(center);
-  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(width, height), mat);
-  return mesh;
+  mat.colorNode = vec3(tint[0], tint[1], tint[2]).mul(intensity).mul(ex).mul(ey);
+  return new THREE.Mesh(new THREE.PlaneGeometry(width, height), mat);
+}
+
+function flag(width, height) {
+  const mat = new THREE.MeshBasicNodeMaterial({ side: THREE.DoubleSide });
+  const p = uv();
+  // pehmeäreunainen musta kartonki
+  const ex = smoothstep(0, 0.06, p.x).mul(smoothstep(0, 0.06, p.x.oneMinus()));
+  const ey = smoothstep(0, 0.02, p.y).mul(smoothstep(0, 0.02, p.y.oneMinus()));
+  mat.colorNode = vec3(0.0);
+  mat.opacityNode = ex.mul(ey);
+  mat.transparent = true;
+  return new THREE.Mesh(new THREE.PlaneGeometry(width, height), mat);
 }
 
 function aim(obj, x, y, z, target = new THREE.Vector3()) {
@@ -33,44 +40,28 @@ function aim(obj, x, y, z, target = new THREE.Vector3()) {
 export function buildStudioScene() {
   const scene = new THREE.Scene();
 
-  // Ympäröivä kupoli: tumma, hieman lämpimämpi alhaalta (lattian heijastus)
+  // Kupoli: kirkas yläpuolisko, lähes musta horisontti, harmaa pöytä.
+  // (Virallisissa kuvissa sivupinnat ja kyljet heijastavat tummaa horisonttia,
+  //  yläpuoliset pinnat ja sisäpinta kirkasta kattovaloa.)
   const domeMat = new THREE.MeshBasicNodeMaterial({ side: THREE.BackSide });
   const dirY = positionWorld.normalize().y;
-  const top = vec3(0.34, 0.342, 0.35);
-  const horizon = vec3(0.17, 0.17, 0.175);
-  const floor = vec3(0.2, 0.195, 0.188);
-  domeMat.colorNode = mix(mix(horizon, top, smoothstep(0.0, 0.8, dirY)), floor, smoothstep(0.02, 0.4, dirY.negate()));
-  scene.add(new THREE.Mesh(new THREE.SphereGeometry(40, 64, 32), domeMat));
+  const zenith = vec3(1.05, 1.05, 1.06);
+  const upper = vec3(0.62, 0.62, 0.63);
+  const horizon = vec3(0.018, 0.018, 0.019);
+  const lower = vec3(0.86, 0.855, 0.85);
+  const up = mix(mix(horizon, upper, smoothstep(0.12, 0.42, dirY)), zenith, smoothstep(0.5, 0.92, dirY));
+  const low = mix(horizon, lower, smoothstep(0.12, 0.5, dirY.negate()));
+  domeMat.colorNode = select(dirY.greaterThanEqual(0), up, low);
+  scene.add(new THREE.Mesh(new THREE.SphereGeometry(40, 96, 48), domeMat));
 
-  // Lattia: valon "allas" pääsoftboxin alla
-  const floorMat = new THREE.MeshBasicNodeMaterial();
-  const fr = length(positionWorld.xz).div(14);
-  floorMat.colorNode = mix(vec3(0.42, 0.41, 0.395), vec3(0.09, 0.088, 0.085), smoothstep(0.0, 1.0, fr));
-  const floorMesh = new THREE.Mesh(new THREE.PlaneGeometry(80, 80), floorMat);
-  floorMesh.rotation.x = -Math.PI / 2;
-  floorMesh.position.y = -6;
-  scene.add(floorMesh);
-
-  // Pääsoftbox ylhäällä, hieman kameran puolella
-  scene.add(aim(softbox(16, 10, 9, 0.2), 0, 11, 3.5));
-  // Suuri valkoinen heijastinkangas kameran takana: hopean "kirkas" perussävy
-  scene.add(aim(softbox(22, 9, 2.2, 0.45, [1, 0.99, 0.975], 0.4), 0, 2.5, 13));
-  // Vasen ja oikea pystystrip: pitkät kirkkaat reunaheijastukset
-  scene.add(aim(softbox(1.8, 14, 14, 0.22, [1, 0.985, 0.96]), -10.5, 1.5, 2.5));
-  scene.add(aim(softbox(1.5, 14, 10, 0.22, [0.96, 0.98, 1]), 10.5, 1.0, -1.5));
-  // Takavalo (rim) ylhäällä takana
-  scene.add(aim(softbox(14, 2.2, 8, 0.25), 0, 6.5, -10));
-  // Matalat sivukankaat: pehmeä täyte alapuolisille pinnoille
-  scene.add(aim(softbox(10, 5, 1.6, 0.4), -9, -3, -6));
-  scene.add(aim(softbox(10, 5, 1.3, 0.4), 9, -3.5, 7));
-  // Pienet aksentit: tuovat eloa kaareviin pintoihin
-  scene.add(aim(softbox(2.4, 2.4, 9, 0.3), -6, 7, -6));
-  scene.add(aim(softbox(3.5, 1.2, 6, 0.3), 7.5, -2.5, 6));
-  // Tummat "flagit": syvät tummat juovat määrittävät muodon kiillotetussa metallissa
-  const flagMat = new THREE.MeshBasicNodeMaterial({ color: 0x000000, side: THREE.DoubleSide });
-  scene.add(aim(new THREE.Mesh(new THREE.PlaneGeometry(3.2, 18), flagMat), -6.5, 1, 8.5));
-  scene.add(aim(new THREE.Mesh(new THREE.PlaneGeometry(2.6, 18), flagMat), 7.5, 1, 7));
-  scene.add(aim(new THREE.Mesh(new THREE.PlaneGeometry(18, 2.5), flagMat), 0, 9.5, -7));
+  // Suuri kattosoftbox
+  scene.add(aim(softbox(22, 22, 1.6, 0.35), 0, 14, 0));
+  // Viistot ylävalot: liukuvat korostukset pyöristyksiin
+  scene.add(aim(softbox(12, 5, 2.4, 0.3), -9, 9, 5));
+  scene.add(aim(softbox(12, 5, 2.0, 0.3), 9, 9, -4));
+  // Kapeat stripit matalalla sivuilla: ohuet kirkkaat reunaviivat
+  scene.add(aim(softbox(0.9, 6, 7, 0.25), -11, 2.2, -3));
+  scene.add(aim(softbox(0.9, 6, 6, 0.25), 11, 2.2, 3));
 
   return scene;
 }
@@ -90,49 +81,39 @@ export function createEnvironment(renderer, size = 512) {
 }
 
 // ---------------------------------------------------------------------------
-// Näkyvä tausta: neutraali grafiitti, pehmeä vinjetti. Lattiataso näkyy vain
-// valon altaana ja renkaan pehmeänä kontaktivarjona.
+// Näkyvä tausta: vaalea, hieman lämmin neutraali harmaa ja pehmeä vinjetti.
 // ---------------------------------------------------------------------------
 export function createBackgroundNode() {
+  const plain = uniform(0);
   const p = screenUV;
-  const d = length(p.sub(vec2(0.5, 0.56)).mul(vec2(1.0, 1.25)));
-  const inner = vec3(0.034, 0.034, 0.036);
-  const outer = vec3(0.006, 0.006, 0.007);
-  return mix(inner, outer, smoothstep(0.05, 0.85, d));
+  const d = length(p.sub(vec2(0.5, 0.54)).mul(vec2(1.0, 1.2)));
+  const inner = vec3(0.86, 0.858, 0.852);
+  const outer = vec3(0.6, 0.598, 0.592);
+  const grad = mix(inner, outer, smoothstep(0.1, 1.0, d));
+  const node = mix(grad, vec3(1.0), plain);
+  node.plain = plain;
+  return node;
 }
 
 export function createGround(floorY) {
   const group = new THREE.Group();
   group.name = 'ground';
 
-  // Valon allas lattialla (pehmeästi häivytetty taustaan)
-  const poolMat = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false });
-  const r = length(positionWorld.xz).div(34);
-  const fall = pow(max(float(1).sub(r), 0), 2.2);
-  poolMat.colorNode = vec3(0.105, 0.103, 0.1);
-  poolMat.opacityNode = fall.mul(0.85);
-  const pool = new THREE.Mesh(new THREE.PlaneGeometry(90, 90), poolMat);
-  pool.rotation.x = -Math.PI / 2;
-  pool.position.y = floorY;
-  pool.renderOrder = -2;
-  group.add(pool);
-
-  // Kontaktivarjo
-  const shadowMat = new THREE.ShadowNodeMaterial({ color: 0x000000, opacity: 0.62, depthWrite: false });
+  // Kontaktivarjo vaalealla taustalla
+  const shadowMat = new THREE.ShadowNodeMaterial({ color: 0x1a1816, opacity: 0.32, depthWrite: false });
   const shadowPlane = new THREE.Mesh(new THREE.PlaneGeometry(90, 90), shadowMat);
   shadowPlane.rotation.x = -Math.PI / 2;
-  shadowPlane.position.y = floorY + 0.01;
+  shadowPlane.position.y = floorY;
   shadowPlane.receiveShadow = true;
-  shadowPlane.renderOrder = -1;
   group.add(shadowPlane);
 
   // Varjoa luova valo (vaikuttaa vain varjotasoon; renkaan materiaalit käyttävät vain IBL:ää)
   const light = new THREE.DirectionalLight(0xffffff, 1);
-  light.position.set(3, 60, 9);
+  light.position.set(2, 60, 8);
   light.target.position.set(0, floorY, 0);
   light.castShadow = true;
   light.shadow.mapSize.set(512, 512);
-  const s = 22;
+  const s = 24;
   light.shadow.camera.left = -s;
   light.shadow.camera.right = s;
   light.shadow.camera.top = s;
@@ -144,5 +125,5 @@ export function createGround(floorY) {
   light.shadow.bias = -0.0004;
   group.add(light, light.target);
 
-  return { group, light, shadowMat, poolMat };
+  return { group, light, shadowMat };
 }
