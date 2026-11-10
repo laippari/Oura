@@ -134,6 +134,8 @@ export function buildProfile(cfg) {
     innerRadius: Ri,
     outerRadius: Ro,
     centerRadius: rc,
+    halfThickness: B,
+    exponents: { p, q },
     sBoreMid: 0,
     sOuterMid: ds[Math.round(N / 2)],
     innerRadiusAt,

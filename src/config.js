@@ -8,18 +8,26 @@
 //  • kameran asento sovitettiin 8000 px:n tuotekuvan siluettiin (IoU 0.99), jolloin
 //    sivupinnan vyöhykkeet, sensorien paikat ja koot voitiin mitata millimetreinä;
 //  • akselin suuntaisista sivukuvista mitattiin sensorien kulma-asemat (perspektiivikorjattu).
-// Virallisten kuvien sormus on sisähalkaisijaltaan ≈ 18.4 mm (soikiolla sovitettuna); malli käyttää
-// samaa kokoa, jotta se on suoraan verrattavissa kuviin.
+// Virallisten kuvien sormus on sisähalkaisijaltaan ≈ 18.5–18.8 mm; katselin näyttää hieman suuremman
+// koon (20.2 mm), jolloin sama 2.28 mm:n paksuus näyttää suhteessa ohuemmalta.
 
 export const RING = {
   width: 6.09,
   thickness: 2.28,
-  innerRadius: 9.224, // sisähalkaisija 18.45 mm: soikiolla molemmat viralliset näkymät antavat saman kameraetäisyyden
+  // Katselimen sormus: sisähalkaisija 20.2 mm (≈ US 10.5). Paksuus pysyy virallisena 2.28 mm.
+  innerRadius: 10.1,
+  // Vertailutila (?match) käyttää virallisten tuotekuvien sormuksen kokoa, jotta kamera ja
+  // ääriviiva voidaan tarkistaa niitä vasten: 43°-tuotekuvat (sovitettu siluettiin yhdessä kameran
+  // kanssa, IoU 0.995) ja akselin suuntaiset sivukuvat (reiän ja ulkoreunan suhde).
+  matchInnerRadius: 9.376,
+  matchInnerRadiusAxial: 9.224,
 
   // Poikkileikkaus: pyöristetty soikio, pyöreä myös sisäpuolelta. Kahden eksponentin superellipsi
   // |z/A|^p + |(r - rc)/B|^q = 1 sovitettu käyttäjän referenssimuotoon (keskivirhe 0.5 px) ja
   // skaalattu virallisiin mittoihin; skaalaus säilyttää eksponentit.
-  crossSection: { p: 3.62, q: 2.51 },
+  // Pyöristystä loivennettu varovasti: eksponentit siirretty noin kolmannes referenssistä
+  // (p 3.62, q 2.51) kohti virallisen ääriviivan suosimaa muotoa (p 4.52, q 3.07).
+  crossSection: { p: 3.9, q: 2.68 },
   // Rakenteen saumat pinnalla (säteittäinen paikka ulkopinnasta, mitattu aksiaalikuvista projisoimalla
   // soikion sivupinnan pisteet ratkaistulla kameralla D = 190.7 mm, f = 24243 px):
   // värillinen kuori | rako | värillinen lukitusrengas | sauma | titaaninen sisäosa
@@ -35,10 +43,18 @@ export const RING = {
 
 // Sensori-ikkunat (mitattu virallisista kuvista). Kulmat kämmenen puolen keskilinjasta.
 export const SENSORS = {
-  led: { angleDeg: 34, height: 0.78 },
-  pd: { angleDeg: 60, height: 0.6 },
-  // pituus kehän suuntaan = mitattu 20° kulma sisäpinnalla (20° × 9.224 mm = 3.22 mm)
-  lens: { halfLength: 1.61, halfWidth: 1.6, corner: 0.72, edgeRadiusLED: 0.5, edgeRadiusPD: 0.42 },
+  // Paikat kaarena sisäpintaa pitkin kämmenen puolen keskilinjasta (mitattu: 34.25° ja 60° virallisten
+  // kuvien 9.224 mm:n säteellä). Fyysinen välimatka pysyy samana sormuksen koosta riippumatta.
+  //
+  // Linssien muoto ja korkeus mitattiin kolmen virallisen aksiaalikuvan reiän ääriviivasta
+  // (tools/measure_lenses.py): LED on loiva pallokupu (säde 6.7 mm, sovitteen jäännös 4 µm) ja
+  // fotodiodi tasainen ikkuna (1 µm). Korkeus = huippu sisäpinnan yläpuolella; ne iteroitiin niin,
+  // että mallin aksiaaliprofiili osuu virallisiin ±0.01 mm. LEDin huippu on taskun pohjasta
+  // 0.69 mm, mikä vastaa Ouran ilmoittamaa 0.7 mm:n kupukorkeutta.
+  led: { arcMm: 5.514, height: 0.61, domeRadius: 6.7, edgeRadius: 0.15 },
+  pd: { arcMm: 9.659, height: 0.365, domeRadius: null, edgeRadius: 0.12 },
+  // halfLength kehän suunnassa (aksiaalikuvien linssin reunat ±9.6°), halfWidth akselin suunnassa
+  lens: { halfLength: 1.55, halfWidth: 1.6, corner: 0.72 },
   pocket: { margin: 0.13, depth: 0.08, bevel: 0.07 },
 };
 
@@ -53,12 +69,12 @@ export const FEATURES = {
 // Viralliset värivaihtoehdot. Ulkokehys saa värin, sisäkuori on aina luonnonvärinen titaani.
 // F0 = metallin heijastusväri lineaarisena sRGB:nä (kalibroitu virallisia kuvia vasten).
 export const FINISHES = [
-  { id: 'silver', name: 'Silver', f0: [0.64, 0.64, 0.64], roughness: 0.055, aniso: 0, brushed: 0, swatch: ['#f4f4f4', '#9a9a9a'] },
-  { id: 'black', name: 'Black', f0: [0.045, 0.045, 0.045], roughness: 0.06, aniso: 0, brushed: 0, swatch: ['#5a5a5c', '#0c0c0d'] },
-  { id: 'stealth', name: 'Stealth', f0: [0.17, 0.17, 0.17], roughness: 0.5, aniso: 0, brushed: 0, bead: 1, swatch: ['#3a3a3b', '#1d1d1e'] },
-  { id: 'brushed-silver', name: 'Brushed Silver', f0: [0.66, 0.66, 0.66], roughness: 0.2, aniso: 0.5, brushed: 1, swatch: ['#e2e2e2', '#a8a8a8'] },
-  { id: 'gold', name: 'Gold', f0: [0.9, 0.78, 0.56], roughness: 0.055, aniso: 0, brushed: 0, swatch: ['#f3e6c8', '#b89a62'] },
-  { id: 'deep-rose', name: 'Deep Rose', f0: [0.78, 0.45, 0.3], roughness: 0.055, aniso: 0, brushed: 0, swatch: ['#efcdb9', '#8f5a45'] },
+  { id: 'silver', name: 'Silver', f0: [0.69, 0.69, 0.69], roughness: 0.055, aniso: 0, brushed: 0, swatch: ['#f4f4f4', '#9a9a9a'] },
+  { id: 'black', name: 'Black', f0: [0.049, 0.049, 0.049], roughness: 0.06, aniso: 0, brushed: 0, swatch: ['#5a5a5c', '#0c0c0d'] },
+  { id: 'stealth', name: 'Stealth', f0: [0.164, 0.164, 0.164], roughness: 0.5, aniso: 0, brushed: 0, bead: 1, swatch: ['#3a3a3b', '#1d1d1e'] },
+  { id: 'brushed-silver', name: 'Brushed Silver', f0: [0.63, 0.63, 0.63], roughness: 0.28, aniso: 0.1, brushed: 1, swatch: ['#e2e2e2', '#a8a8a8'] },
+  { id: 'gold', name: 'Gold', f0: [0.93, 0.78, 0.51], roughness: 0.055, aniso: 0, brushed: 0, swatch: ['#f3e6c8', '#b89a62'] },
+  { id: 'deep-rose', name: 'Deep Rose', f0: [0.625, 0.37, 0.27], roughness: 0.055, aniso: 0, brushed: 0, swatch: ['#efcdb9', '#8f5a45'] },
 ];
 
 export const VIEW = {

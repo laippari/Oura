@@ -4,7 +4,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 // Paikalliset pinnan yksityiskohdat, mitattu virallisista tuotekuvista:
 //  • neljä sensori-ikkunaa sisäpinnalla (2 × tri-LED ±34°, 2 × fotodiodi ±60°):
-//    upotus titaaniin viistetyllä reunalla, tumma tiivisterako, kirkas "flat-top"-linssi,
+//    upotus titaaniin viistetyllä reunalla, tumma tiivisterako, kirkas linssi (LED: loiva kupu, fotodiodi: tasainen ikkuna),
 //    linssin sisällä komponentit;
 //  • suuntausmerkki ulkopinnalla kämmenen puolella (stadionin muotoinen matala upotus);
 //  • sisäpinnan yläosan tasainen levy.
@@ -160,19 +160,27 @@ export function buildRecessPatch(o) {
 
 // Kirkas linssi: pystysuora sivuseinä, pyöristetty yläreuna, tasainen yläpinta.
 export function buildLens(o) {
-  const { R, thetaC, hA, hB, rc, H, rr, base, Rf } = o;
+  const { R, thetaC, hA, hB, rc, H, rr, base, Rf, domeRadius = null } = o;
   const map = makeMapper('bore', R, thetaC, 0, Rf);
+  // Yläpinta on linssin omassa tangenttitasossa joko taso (fotodiodi) tai loiva pallokupu
+  // (LED, säde domeRadius) – mitattu virallisten aksiaalikuvien linssiprofiileista.
+  // crown(u, v) = pudotus huipusta korkeutena kaarevan sisäpinnan yläpuolella: tason jänne
+  // kehän suunnassa + soikean reiän pullistuma akselin suunnassa + kuvun nuoli.
+  const R0 = Rf(0);
+  const sag = (s) => (domeRadius ? domeRadius - Math.sqrt(Math.max(0, domeRadius * domeRadius - s * s)) : 0);
+  const crown = (u, v) => (R - H) * (1 / Math.cos(u / R) - 1) - (Rf(v) - R0) + sag(Math.hypot(u, v));
+  const e = 1e-4;
   const rings = [];
-  rings.push({ d: 0, h: base, n: [1, 0] });
+  rings.push({ d: 0, h: base, n: [1, 0], fixed: true });
   rings.push({ d: 0, h: H - rr, n: [1, 0] });
-  const nArc = 14;
+  const nArc = 12;
   for (let k = 1; k <= nArc; k++) {
     const phi = (Math.PI / 2) * (k / nArc);
     rings.push({ d: -rr + rr * Math.cos(phi), h: H - rr + rr * Math.sin(phi), n: [Math.cos(phi), Math.sin(phi)] });
   }
   const dmin = -Math.min(hA, hB) + 1e-4;
-  for (let k = 1; k <= 6; k++) {
-    const d = -rr + (dmin + rr) * (k / 6);
+  for (let k = 1; k <= 8; k++) {
+    const d = -rr + (dmin + rr) * Math.pow(k / 8, 0.85);
     rings.push({ d, h: H, n: [0, 1] });
   }
   const pos = [], nrm = [], idx = [];
@@ -181,8 +189,19 @@ export function buildLens(o) {
     const contour = rrContour(hA + rg.d, hB + rg.d, rc + rg.d, 26, 16);
     nPer = contour.length;
     for (const c of contour) {
-      const m = map(c.u, c.v, rg.h);
-      const nl = [rg.n[0] * c.nu, rg.n[0] * c.nv, rg.n[1]];
+      let h = rg.h;
+      let nl = [rg.n[0] * c.nu, rg.n[0] * c.nv, rg.n[1]];
+      if (!rg.fixed) {
+        h -= crown(c.u, c.v);
+        // kallistetaan normaalia pudotuksen gradientin verran (pystyseinä ei muutu)
+        const gu = (crown(c.u + e, c.v) - crown(c.u - e, c.v)) / (2 * e);
+        const gv = (crown(c.u, c.v + e) - crown(c.u, c.v - e)) / (2 * e);
+        nl = [nl[0] + nl[2] * gu, nl[1] + nl[2] * gv, nl[2]];
+        const l = Math.hypot(nl[0], nl[1], nl[2]);
+        nl = nl.map((x) => x / l);
+        h = Math.max(h, base + 0.01);
+      }
+      const m = map(c.u, c.v, h);
       const n = [0, 1, 2].map((i) => nl[0] * m.eu[i] + nl[1] * m.ev[i] + nl[2] * m.eh[i]);
       pos.push(...m.p);
       nrm.push(...n);

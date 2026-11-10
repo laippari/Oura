@@ -8,7 +8,7 @@
 
 Tulostaa IoU:n ja ääriviivavirheen millimetreinä (molempiin suuntiin mitattu etäisyys
 ääriviivojen välillä). Peittokuva: punainen = vain virallinen, vihreä = vain malli.
-Toteutettu malli: IoU 0,995, keskimäärin 0,014 mm, 95 % < 0,031 mm, max 0,046 mm.
+Toteutettu malli (p 3,9, q 2,68): IoU 0,993, keskimäärin 0,014 mm, 95 % < 0,041 mm, max 0,078 mm.
 """
 import numpy as np, cv2, sys
 from PIL import Image
@@ -17,7 +17,7 @@ model = np.array(Image.open(sys.argv[1]).convert('L'))
 N = model.shape[0]
 ref = np.array(Image.open(sys.argv[2]).convert('RGBA').resize((N, N), Image.LANCZOS))[..., 3] > 127
 m = model > 127
-pxmm = 6543.19 / 174.31 * (N / 1000)  # sovitetun kameran mittakaava renkaan keskellä
+pxmm = 6515.87 / 176.0 * (N / 1000)  # sovitetun kameran mittakaava renkaan keskellä
 iou = np.logical_and(m, ref).sum() / np.logical_or(m, ref).sum()
 def err(a, b):
     edge = cv2.Canny(b.astype(np.uint8) * 255, 50, 150)

@@ -8,6 +8,7 @@ import {
   uv,
   texture,
   positionLocal,
+  normalLocal,
   modelWorldMatrix,
   modelWorldMatrixInverse,
   pmremTexture,
@@ -30,6 +31,8 @@ import {
   min,
   sin,
   cos,
+  sign,
+  select,
 } from 'three/tsl';
 
 const { Node } = THREE;
@@ -154,9 +157,37 @@ class InteriorReflectionNode extends Node {
       return m;
     };
 
+    // Reiän todellinen pinta (soikion sisäpuolisko): r(z) = rc − B·(1 − |z/A|^p)^(1/q).
+    // Aiempi versio oletti suoran sylinterin; soikiolla se tuotti reunoille teräviä vääriä juovia.
+    const { A, B, rc, p: ep, q: eq } = P.bore;
+    const uMax = 0.995;
+    const rIn = (z) => {
+      const u = min(abs(z).div(A), uMax);
+      return float(rc).sub(float(B).mul(pow(float(1).sub(pow(u, ep)), 1 / eq)));
+    };
+    const rInD = (z) => {
+      // dr/dz (positiivinen kun |z| kasvaa: reikä nousee reunoja kohti)
+      const u = max(min(abs(z).div(A), uMax), 1e-4);
+      const g = float(1).sub(pow(u, ep));
+      return float(B / eq).mul(pow(g, 1 / eq - 1)).mul(float(ep).mul(pow(u, ep - 1))).div(A).mul(sign(z));
+    };
+
+    // Sisätilan valo: Ouran kuvissa koveran sisäpinnan heijastukset ovat kirkkaampia ja tasaisempia
+    // kuin pelkkä kaukainen studio selittäisi (lähellä olevat valkoiset heijastinpinnat valaisevat
+    // renkaan sisustaa, ulkopinta ei niitä näe). Mitattu virallisesta 43°-kuvasta:
+    // L_sisä ≈ gain · L_studio + fill. Painotetaan pinnan sisäänpäin osoittavuudella, joten
+    // kuperat titaanisivut saavat pelkän studion.
+    const gain = P.interiorLight?.gain ?? 1;
+    const fill = P.interiorLight?.fill ?? 0;
+
     return Fn(([reflWorld, level]) => {
       const f0 = vec3(P.wallF0.r, P.wallF0.g, P.wallF0.b);
       const p = vec3(positionLocal).toVar();
+      const radial = normalize(vec3(positionLocal.x, positionLocal.y, 0));
+      const wIn = smoothstep(0.35, 0.85, dot(normalize(normalLocal), radial.negate())).toVar();
+      const k = float(1).add(wIn.mul(gain - 1)).toVar();
+      const fillV = vec3(wIn.mul(fill)).toVar();
+      const lit = (dir, lvl) => sample(dir, lvl).mul(k).add(fillV);
       const d = normalize(modelWorldMatrixInverse.mul(vec4(reflWorld, 0)).xyz).toVar();
       const through = vec3(1).toVar();
       const color = vec3(0).toVar();
@@ -164,19 +195,34 @@ class InteriorReflectionNode extends Node {
       const lvlHit = max(lvl0, float(P.wallRoughness)).toVar();
 
       for (let i = 0; i < bounces; i++) {
-        // säde p + t·d leikkaa sylinterin |xy| = Rw (p on sylinterin pinnalla tai sen sisällä)
+        // 1) alkuarvaus: sylinteri, jonka säde on pinnan säde lähtöpisteen kohdalla
         const a = max(dot(d.xy, d.xy), 1e-5).toVar();
         const b = dot(p.xy, d.xy).toVar();
         const pp = dot(p.xy, p.xy).toVar();
-        const c = pp.sub(max(pp, P.R0 * P.R0));
+        const rw = max(rIn(p.z), sqrt(pp));
+        const c = pp.sub(rw.mul(rw));
         const disc = max(b.mul(b).sub(a.mul(c)), 0);
         const t = b.negate().add(sqrt(disc)).div(a).toVar();
+        // 2) Newton-iteraatiot todellista pintaa vasten: f(t) = |xy| − r(z)
+        for (let k = 0; k < 4; k++) {
+          const qk = p.add(d.mul(t));
+          const rho = max(length(qk.xy), 1e-4);
+          const f = rho.sub(rIn(qk.z));
+          const fp = dot(qk.xy, d.xy).div(rho).sub(rInD(qk.z).mul(d.z));
+          const safe = abs(fp).greaterThan(0.02);
+          t.assign(select(safe, t.sub(f.div(fp)), t));
+        }
         const q = p.add(d.mul(t)).toVar();
-        const valid = smoothstep(0.0, 0.02, t);
-        const onWall = float(1).sub(smoothstep(P.wallHalf - 0.25, P.wallHalf + 0.35, abs(q.z)));
-        const w = valid.mul(onWall).toVar();
-        color.addAssign(through.mul(w.oneMinus()).mul(sample(d, i === 0 ? lvl0 : lvlHit)));
-        const nrm = normalize(vec3(q.x.negate(), q.y.negate(), 0)).toVar();
+        const residual = abs(length(q.xy).sub(rIn(q.z)));
+        // osuma kelpaa: eteenpäin, konvergoitunut ja reiän pinnalla (ei reunojen yli)
+        const ok = smoothstep(0.0, 0.01, t)
+          .mul(float(1).sub(smoothstep(0.01, 0.03, residual)))
+          .mul(float(1).sub(smoothstep(A * 0.9, A * 0.99, abs(q.z))));
+        const w = ok.toVar();
+        color.addAssign(through.mul(w.oneMinus()).mul(lit(d, i === 0 ? lvl0 : lvlHit)));
+        // pinnan normaali (sisäänpäin): −normalize(x/ρ, y/ρ, −r'(z))
+        const rq = max(length(q.xy), 1e-4);
+        const nrm = normalize(vec3(q.x.div(rq), q.y.div(rq), rInD(q.z).negate())).negate().toVar();
         const cosT = clamp(dot(d.negate(), nrm), 0, 1);
         const fres = f0.add(vec3(1).sub(f0).mul(pow(float(1).sub(cosT), 5)));
         const wallRefl = mix(fres, fres.mul(P.windowReflect ?? 0.35), domeMask(q));
@@ -184,7 +230,7 @@ class InteriorReflectionNode extends Node {
         d.assign(reflect(d, nrm));
         p.assign(q);
       }
-      color.addAssign(through.mul(sample(d, bounces === 0 ? lvl0 : lvlHit)));
+      color.addAssign(through.mul(lit(d, bounces === 0 ? lvl0 : lvlHit)));
       return color;
     });
   }
@@ -275,10 +321,10 @@ export function createMaterials({ envTexture, profile, windows, outerPatches, bo
     const lowFreq = mx_noise_float(positionLocal.mul(0.9)).mul(0.01);
     const beadN = mx_noise_float(positionLocal.mul(25)).mul(0.07);
     let rough = fin.roughness.add(lowFreq).add(microR.mul(0.12).mul(fin.brushed.oneMinus()));
-    rough = rough.add(brushT.mul(0.24).mul(fin.brushed)).add(beadN.mul(fin.bead));
+    rough = rough.add(brushT.mul(0.3).mul(fin.brushed)).add(beadN.mul(fin.bead));
     rough = rough.add(mark.mul(0.06));
     m.roughnessNode = clamp(rough, 0.035, 0.75);
-    m.colorNode = vec3(fin.color).mul(float(1).add(brushT.mul(0.18).mul(fin.brushed)));
+    m.colorNode = vec3(fin.color).mul(float(1).add(brushT.mul(0.34).mul(fin.brushed)));
     // anisotropia kehän suuntaan (bitangentti): poikittaiset harjausjäljet venyttävät heijastuksia kehää pitkin
     m.anisotropyNode = vec2(0, fin.aniso);
     m.aoNode = cavity;
@@ -289,15 +335,18 @@ export function createMaterials({ envTexture, profile, windows, outerPatches, bo
   const outerPatch = makeFrame('Frame patch', null);
 
   // --- Sisäkuori: kiillotettu titaani, keskinäisheijastukset -------------------------
-  const shellF0 = new THREE.Color(0.6, 0.6, 0.6); // virallisissa kuvissa titaani on neutraalin harmaa
+  const shellF0 = new THREE.Color(0.6, 0.6, 0.6); // titaani; sama F0 kuin studion rekonstruktiossa (sivupinnat täsmäävät ±1 %)
   const interiorParams = {
     R0: profile.innerRadius,
-    wallHalf: profile.halfWidth * 0.62, // soikion reikä kaartuu ylös reunoilla
+    bore: { A: profile.halfWidth, B: profile.halfThickness, rc: profile.centerRadius, p: profile.exponents.p, q: profile.exponents.q },
     wallF0: shellF0,
     wallRoughness: 0.1,
     windows: windows.map((w) => ({ th: w.thetaC, A: w.hA + 0.15, B: w.hB + 0.15 })),
     windowReflect: 0.45,
+    // sisätilan lisävalo (mitattu virallisesta kuvasta, ks. InteriorReflectionNode)
+    interiorLight: { gain: 1.2, fill: 0.25 },
   };
+
   const makeShell = (name, maskRegions) => {
     const m = new THREE.MeshPhysicalNodeMaterial({ name, metalness: 1 });
     m.lightsNode = noLights;

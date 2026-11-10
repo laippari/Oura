@@ -1,14 +1,58 @@
 import * as THREE from 'three/webgpu';
-import { float, vec2, vec3, uv, smoothstep, screenUV, length, mix, positionWorld, uniform, select } from 'three/tsl';
+import { float, vec2, vec3, uv, smoothstep, screenUV, length, mix, positionWorld, uniform, select, texture, atan, asin, clamp } from 'three/tsl';
+import { STUDIO_ENV } from './studioEnv.js';
 
 // ---------------------------------------------------------------------------
-// Kirkas tuotekuvausstudio (kuten Ouran virallisissa kuvissa).
+// Studiovalaistus.
 //
-// Kiillotettu metalli näyttää vain sen, mitä se heijastaa: valkoinen "valoteltta"
-// (kupoli + suuret softboxit) antaa hopealle sen kirkkaan perussävyn, ja kapeat mustat
-// "flagit" piirtävät reunoihin terävät tummat juovat, jotka määrittävät muodon.
+// Oletus 'oura': Ouran oma tuotekuvausstudio rekonstruoituna heidän virallisista kuvistaan
+// (studioEnv.js). Ruudukko interpoloidaan kuutiollisella B-splinillä tiheämmäksi tekstuuriksi,
+// joten kiillotetussa pinnassa ei näy ruudukon kulmia eikä teräviä softbox-reunoja.
+// Vaihtoehto 'soft' (#soft): aiempi pehmeä liukuväri + yksi valo.
 // Näkymä renderöidään kuutiokarttaan ja esisuodatetaan (PMREM) karheustasoille.
 // ---------------------------------------------------------------------------
+
+// Kuutiollinen B-spline-ylösnäytteistys (sileä, ei ylitystä): atsimuutti jaksollinen, korkeus rajattu.
+function upsampleEnv(env, W, H) {
+  const { width: w, height: h, data } = env;
+  const at = (x, y) => data[Math.min(h - 1, Math.max(0, y)) * w + (((x % w) + w) % w)];
+  const B = (t) => [(1 - t) ** 3 / 6, (3 * t ** 3 - 6 * t * t + 4) / 6, (-3 * t ** 3 + 3 * t * t + 3 * t + 1) / 6, t ** 3 / 6];
+  const out = new Float32Array(W * H * 4);
+  for (let j = 0; j < H; j++) {
+    const fy = ((j + 0.5) / H) * h - 0.5;
+    const y0 = Math.floor(fy);
+    const by = B(fy - y0);
+    for (let i = 0; i < W; i++) {
+      const fx = ((i + 0.5) / W) * w - 0.5;
+      const x0 = Math.floor(fx);
+      const bx = B(fx - x0);
+      let v = 0;
+      for (let b = 0; b < 4; b++) for (let a = 0; a < 4; a++) v += by[b] * bx[a] * at(x0 - 1 + a, y0 - 1 + b);
+      const k = (j * W + i) * 4;
+      out[k] = out[k + 1] = out[k + 2] = v;
+      out[k + 3] = 1;
+    }
+  }
+  const tex = new THREE.DataTexture(out, W, H, THREE.RGBAFormat, THREE.FloatType);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.ClampToEdgeWrapping;
+  tex.magFilter = THREE.LinearFilter;
+  tex.minFilter = THREE.LinearFilter;
+  tex.needsUpdate = true;
+  return tex;
+}
+
+function buildOuraStudio() {
+  const scene = new THREE.Scene();
+  const tex = upsampleEnv(STUDIO_ENV, 384, 192);
+  const mat = new THREE.MeshBasicNodeMaterial({ side: THREE.BackSide });
+  const d = positionWorld.normalize();
+  const u = atan(d.x, d.z).div(Math.PI * 2).add(0.5);
+  const v = asin(clamp(d.y, -1, 1)).div(Math.PI).add(0.5);
+  mat.colorNode = texture(tex, vec2(u, v)).rgb;
+  scene.add(new THREE.Mesh(new THREE.SphereGeometry(40, 128, 64), mat));
+  return scene;
+}
 
 function softbox(width, height, intensity, softness = 0.12, tint = [1, 1, 1]) {
   // Lisäävä sekoitus: reunat häivyttyvät taustaan eivätkä mustaan (muuten kiillotettu metalli
@@ -27,24 +71,17 @@ function aim(obj, x, y, z, target = new THREE.Vector3()) {
   return obj;
 }
 
-// variant 'soft' (oletus): harmaa horisontti, matala kontrasti.
-// variant 'contrast': sama rakenne, mutta tumma horisontti kuten Ouran tuotekuvissa (sivupinnat
-// heijastavat tummaa, yläpinnat kirkasta) – yhä vain liukuväri ja yksi valo.
-export function buildStudioScene(variant = 'soft') {
+// Vaihtoehtoinen pehmeä studio (#soft): harmaa horisontti, matala kontrasti.
+export function buildStudioScene() {
   const scene = new THREE.Scene();
-  const hi = variant === 'contrast';
 
   // Yksinkertainen valaistus: pehmeä pystysuuntainen liukuväri (kirkas yläpuoli → harmaa
   // horisontti → vaalea pöytä) ja yksi suuri, pehmeäreunainen yläpuolinen valo. Kiillotetussa
   // metallissa tämä näkyy muutamana leveänä, rauhallisena heijastusvyönä.
   const domeMat = new THREE.MeshBasicNodeMaterial({ side: THREE.BackSide });
   const dirY = positionWorld.normalize().y;
-  const zenith = vec3(1.0, 1.0, 1.0);
-  const horizon = hi ? vec3(0.03, 0.03, 0.031) : vec3(0.3, 0.3, 0.305);
-  const below = hi ? vec3(0.05, 0.05, 0.05) : vec3(0.2, 0.198, 0.196);
-  const table = vec3(0.6, 0.595, 0.59);
-  const up = mix(horizon, zenith, hi ? smoothstep(0.12, 0.5, dirY) : smoothstep(0.0, 0.85, dirY));
-  const low = mix(below, table, hi ? smoothstep(0.05, 0.45, dirY.negate()) : smoothstep(0.15, 0.7, dirY.negate()));
+  const up = mix(vec3(0.3, 0.3, 0.305), vec3(1.0, 1.0, 1.0), smoothstep(0.0, 0.85, dirY));
+  const low = mix(vec3(0.2, 0.198, 0.196), vec3(0.6, 0.595, 0.59), smoothstep(0.15, 0.7, dirY.negate()));
   domeMat.colorNode = select(dirY.greaterThanEqual(0), up, low);
   scene.add(new THREE.Mesh(new THREE.SphereGeometry(40, 96, 48), domeMat));
 
@@ -54,14 +91,15 @@ export function buildStudioScene(variant = 'soft') {
   return scene;
 }
 
-export function createEnvironment(renderer, size = 512, variant = 'soft') {
+export function createEnvironment(renderer, size = 512, variant = 'oura') {
   const pmrem = new THREE.PMREMGenerator(renderer);
-  const studio = buildStudioScene(variant);
+  const studio = variant === 'oura' ? buildOuraStudio() : buildStudioScene();
   const rt = pmrem.fromScene(studio, 0, 0.1, 100, { size });
   studio.traverse((o) => {
     if (o.isMesh) {
       o.geometry.dispose();
       o.material.dispose();
+      o.material.colorNode?.value?.dispose?.();
     }
   });
   pmrem.dispose();

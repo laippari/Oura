@@ -24,18 +24,21 @@ Sivu toimii myös GitHub Pagesissa (repo root). three.js ladataan jsDelivr-CDN:s
 
 ## Mitä mallissa on
 
-**Mitat:** leveys 6,09 mm ja paksuus 2,28 mm (viralliset). Sisähalkaisija on 18,45 mm (noin
-US 8,5), eli sama koko kuin virallisissa tuotekuvissa. Soikiolla vain tämä koko antaa molemmista
-virallisista näkymistä (43° ja akselin suunta) saman, uskottavan kameraetäisyyden (175–191 mm).
+**Mitat:** leveys 6,09 mm ja paksuus 2,28 mm (viralliset). Katselimen sormuksen sisähalkaisija on
+20,2 mm (noin US 10,5). Virallisten tuotekuvien sormus on pienempi (18,75 mm 43°-kuvissa ja
+18,45 mm akselin suuntaisissa kuvissa), jolloin sama 2,28 mm:n paksuus näyttää suhteessa
+paksummalta. Koko on yksi arvo (`RING.innerRadius`); vertailutila `?match` käyttää kuvien kokoa.
 
 **Poikkileikkaus.** Pyöristetty soikio, joka on pyöreä myös sisäpuolelta. Muoto on otettu
 käyttäjän antamasta referenssikuvasta: sen ääriviivaan sovitettiin kahden eksponentin superellipsi
 
-    |z / A|^3,62 + |(r − rc) / B|^2,51 = 1
+    |z / A|^p + |(r − rc) / B|^q = 1,   referenssi p = 3,62, q = 2,51
 
 (keskivirhe 0,5 px referenssikuvassa). Se on skaalattu Ouran virallisiin mittoihin
 6,09 × 2,28 mm (A = 3,045, B = 1,14). Skaalaus säilyttää eksponentit, joten soikio vain venyy
-vaakasuunnassa. Reiän pinta on kupera ja nousee reunoja kohti; sensori-ikkunat, suuntausmerkki ja
+vaakasuunnassa. Pyöristystä on loivennettu varovasti: eksponentit on siirretty kolmannes
+matkasta kohti virallisen ääriviivan suosimaa muotoa (p 4,52, q 3,07), eli **p = 3,9, q = 2,68**.
+Muutos parantaa myös sovitusta viralliseen ääriviivaan (IoU 0,9936 → 0,9947). Reiän pinta on kupera ja nousee reunoja kohti; sensori-ikkunat, suuntausmerkki ja
 yläosan levy seuraavat kaarevaa pintaa.
 
 Rakenne näkyy pinnalla ohuina saumoina, ei portaina. Saumojen säteittäiset paikat on mitattu
@@ -53,12 +56,23 @@ PVD-väri on kuoressa ja lukitusrenkaassa (Ouran purkukuvassa kultaiset ohuet re
 molemmilla puolilla). Titaaninen sisäosa ja reiän pinta ovat kaikissa väreissä hopeisia.
 
 **Sensorit:** neljä erillistä ikkunaa kämmenen puolella.
-- **Sijainnit:** 2 × tri-LED ±34° ja 2 × fotodiodi ±60° keskilinjasta.
-- **Ikkuna:** kirkas, tasakattoinen linssi, kooltaan 3,2 × 3,2 mm ja kulmasäteeltään 0,72 mm.
-  Linssin yläreuna on pyöristetty. Linssi on viistereunaisessa upotuksessa, ja sen ympärillä
-  on kapea tumma tiivisterako; linssin alla upotuksen pohja on titaania, joten lasin reunat
-  näkyvät kirkkaina kuten virallisissa kuvissa.
-- **Linssien korkeus:** LED 0,78 mm ja fotodiodi 0,60 mm (virallinen kupukorkeus on 0,7 mm).
+- **Sijainnit:** 2 × tri-LED ja 2 × fotodiodi, keskilinjasta 5,51 mm ja 9,66 mm sisäpintaa
+  pitkin (34,25° ja 60° virallisten kuvien sormuksessa). Välimatka pysyy samana, vaikka
+  sormuksen koko muuttuu.
+- **Ikkuna:** kirkas linssi, 3,1 mm kehän suunnassa × 3,2 mm akselin suunnassa, kulmasäde
+  0,72 mm. Linssi on viistereunaisessa upotuksessa, ja sen ympärillä on kapea tumma
+  tiivisterako; linssin alla upotuksen pohja on titaania, joten lasin reunat näkyvät kirkkaina.
+- **Linssien muoto ja korkeus** mitattiin kolmen virallisen aksiaalikuvan reiän ääriviivasta
+  (`tools/measure_lenses.py`):
+
+  | Linssi | Muoto | Huippu sisäpinnasta | Reunan pyöristys |
+  | --- | --- | --- | --- |
+  | tri-LED | loiva pallokupu, säde 6,7 mm (sovitteen jäännös 4 µm) | 0,61 mm (ennen 0,78) | 0,15 mm |
+  | fotodiodi | tasainen ikkuna (jäännös 1 µm) | 0,365 mm (ennen 0,60) | 0,12 mm |
+
+  Korkeudet haettiin renderöimällä malli samalla kameralla ja säätämällä, kunnes mallin
+  profiili osui virallisiin ±0,01 mm:n tarkkuudella. LEDin huippu on upotuksen pohjasta
+  0,69 mm, mikä vastaa Ouran ilmoittamaa 0,7 mm:n kupukorkeutta.
 - **Tri-LED:** valkoinen keraaminen alusta, pyöristetty vihreä emitterialue isolla sirulla ja
   kapea pyöristetty punainen/IR-alue, jossa kaksi pientä sirua ristielektrodeineen ja ohuine
   bondilankoineen. Punainen alue on keskilinjan puolella.
@@ -80,11 +94,16 @@ kirkkaus samalla kameralla):
 | Silver | neutraali peilikiillotus |
 | Black | neutraali kiiltävä musta |
 | Stealth | mattamusta, vaaleampi kuin Black (kuten virallisessa kuvassa) |
-| Brushed Silver | harjausjäljet poikittain renkaan leveyden suuntaan (ulkopinnalla akselin suuntaan); heijastukset venyvät kehää pitkin |
+| Brushed Silver | satiini; harjausjäljet poikittain renkaan leveyden suuntaan (ulkopinnalla akselin suuntaan), heijastukset venyvät kehää pitkin |
 | Gold | vaalea moderni kulta |
 | Deep Rose | syvä kuparinruusu; sävy (lineaarinen RGB-suhde 1,00 / 0,56 / 0,36) vastaa virallista (1,00 / 0,58 / 0,39) |
 
-Sisäpuolen titaani on neutraalin harmaa kuten virallisissa kuvissa.
+Sisäpuolen titaani on neutraalin harmaa (F0 0,6) kuten virallisissa kuvissa.
+
+Vertailu virallisiin 43°-kuviin samalla kameralla (lineaarisen säteilyn suhde, 1,00 = sama):
+sisäpinta 0,98 kaikilla kuudella värillä, titaaniset sivupinnat 0,92–1,01 ja ulkopinnan
+yläosa 0,88–1,08. Brushed Silverin F0 ja karheus säädettiin tämän vertailun perusteella
+(F0 0,63, karheus 0,28).
 
 ## Miten muoto validoitiin
 
@@ -108,19 +127,18 @@ Sisäpuolen titaani on neutraalin harmaa kuten virallisissa kuvissa.
 
    | Poikkileikkaus | IoU | Ääriviivavirhe keskim. | 95 % | max |
    | --- | --- | --- | --- | --- |
-   | toteutettu 3D-malli, renderöity (`?match&mask`) | 0,990 | 0,019 mm | 0,053 mm | 0,22 mm* |
-   | referenssisoikio, kamera ja sormuksen koko sovitettu | 0,994 | 0,014 mm | 0,040 mm | 0,080 mm |
+   | toteutettu 3D-malli (p 3,9, q 2,68), renderöity (`?match&mask`) | 0,993 | 0,014 mm | 0,041 mm | 0,078 mm |
+   | soikio p 3,9, q 2,68, kamera ja sormuksen koko sovitettu | 0,995 | 0,013 mm | 0,041 mm | 0,081 mm |
+   | referenssisoikio (p 3,62, q 2,51), kamera ja koko sovitettu | 0,994 | 0,014 mm | 0,040 mm | 0,080 mm |
    | vertailuna: eksponentit vapaina (p 4,52, q 3,07) | 0,996 | 0,010 mm | 0,028 mm | 0,044 mm |
    | referenssisoikio aiemmalla koolla (sisähalkaisija 21,9 mm) | 0,905 | 0,218 mm | 0,446 mm | 0,495 mm |
 
-   \* suurin poikkeama on sensorilinssien kohdalla, joita sovitusmalli ei sisällä.
-
    - **Koko:** soikio sopii viralliseen ääriviivaan vain pienemmällä sormuksella. Akselin
      suuntainen kuva vahvistaa tämän: koolla 18,45 mm kameraetäisyys on 191 mm (43°-kuvassa
-     174 mm), kun taas 21,9 mm:n koko vaatisi 68 mm:n etäisyyden. Malli käyttää siksi kokoa
-     18,45 mm. Sensori-ikkunoiden pituus kehän suunnassa seuraa mitattua 20° kulmaa (3,2 mm).
-   - **Muoto:** virallinen kuva suosisi hieman kulmikkaampaa soikiota (p 4,5, q 3,1), mutta ero
-     ääriviivassa on alle 0,01 mm. Malli käyttää referenssimuotoa sellaisenaan.
+     176 mm, koko 18,75 mm), kun taas 21,9 mm:n koko vaatisi 68 mm:n etäisyyden. Vertailutila
+     käyttää siksi kuvien kokoa; katselin näyttää suuremman 20,2 mm:n sormuksen.
+   - **Muoto:** virallinen kuva suosisi kulmikkaampaa soikiota (p 4,5, q 3,1). Ero ääriviivassa
+     on alle 0,01 mm, joten malli pysyy lähellä referenssimuotoa (p 3,9, q 2,68).
 
 3. **Avoin ristiriita:** lukitusrenkaan vyö näkyy 43°-kuvassa sekä ylä- että alaosassa noin
    5–10 px (0,2–0,45 mm) eri kohdassa kuin ääriviivaan sopiva kamera ennustaa. Kuoren ja
@@ -139,15 +157,26 @@ mitat (kokoluokka kuvista) ja saumojen syvyydet. Oura ei julkaise CAD-malleja.
 - **WebGPU** three.js:n `WebGPURenderer`illä (TSL → WGSL). Jos WebGPU ei ole saatavilla,
   käytetään automaattisesti WebGL 2:ta. Käytössä oleva taustajärjestelmä näkyy oikeassa
   yläkulmassa.
-- **Studio:** yksinkertainen ja rauhallinen. Pehmeä pystysuuntainen liukuväri (kirkas yläpuoli,
-  harmaa horisontti, vaalea pöytä) ja yksi suuri pehmeäreunainen valo ylhäällä. Valo lisätään
-  taustan päälle, joten sen reunat eivät heijastu tummina kehyksinä. Kiillotetussa metallissa
-  näkyy muutama leveä heijastusvyö. Valaistus esisuodatetaan PMREM-kartaksi.
-  Vaihtoehto `?studio=contrast` käyttää samaa rakennetta tummalla horisontilla: sivupinnat
-  heijastavat tummaa ja yläpinnat kirkasta kuten Ouran tuotekuvissa.
-- **Sisäpinnan heijastukset:** kiillotettu sisäpinta heijastaa vastakkaista seinäänsä. Tämä
-  lasketaan sävyttimessä analyyttisesti sylinteriä vasten (3 pomppua, Fresnel jokaisella
-  pompulla).
+- **Studio: Ouran oma tuotekuvausstudio, rekonstruoitu heidän virallisista kuvistaan**
+  (`tools/recover_studio.py` → `src/studioEnv.js`). Virallisen 43°-kuvan jokaiselle kuperan
+  pinnan pikselille laskettiin heijastussuunta mallin geometriasta ja sovitetusta kamerasta.
+  Säteily saadaan kaavalla L = TM⁻¹(pikseli) / F, jossa TM⁻¹ on Neutral-sävykartoituksen
+  käänteisfunktio ja F Schlickin Fresnel tunnetulla F0:lla. Lähteinä ovat Silver-ulkopinta ja
+  kaikkien kuuden värin titaaniset sivut. Säteily ryhmiteltiin 7,5°:n soluihin (dataa 1050 /
+  1152 solussa), peilattiin vasen–oikea-symmetriseksi ja tasoitettiin log-asteikolla (jäännös
+  0,16 rms, ≈ 17 %). Ruudukko interpoloidaan kuutiollisella B-splinillä, joten heijastuksissa ei
+  näy ruudukon kulmia eikä teräviä softbox-reunoja. Lopuksi se esisuodatetaan PMREM-kartaksi.
+  Aiempi pehmeä studio on vaihtoehtona: `#soft`.
+- **Sisäpinnan heijastukset:** kiillotettu sisäpinta heijastaa vastakkaista seinäänsä. Säde
+  jäljitetään sävyttimessä soikean reiän todellista pintaa vasten (Newton-iteraatio, oikeat
+  normaalit, 3 pomppua, Fresnel jokaisella pompulla). Aiempi versio oletti suoran sylinterin,
+  mikä tuotti pyöritettäessä sisäpuolelle terävän väärän varjojuovan.
+- **Sisätilan valo:** virallisissa kuvissa koveran sisäpinnan heijastukset ovat kirkkaampia
+  ja tasaisempia kuin pelkkä kaukainen studio selittäisi. Renkaan sisustaa valaisevat lähellä
+  olevat valkoiset pinnat, joita kuperat ulkopinnat eivät näe. Virallisesta kuvasta mitattiin
+  L_sisä ≈ 1,2 · L_studio + 0,25. Tämä painotetaan pinnan sisäänpäin osoittavuudella, joten
+  titaaniset sivupinnat saavat pelkän studion. Samalla studion tumma horisonttivyö ei enää
+  piirry sisäpintaan terävänä varjona.
 - **Linssit:** kirkkaat linssit ovat oikeaa valoa läpäisevää ja taittavaa materiaalia.
 - **Varjo:** pehmeä VSM-kontaktivarjo.
 - **Laatu:** liikkeessä 4× MSAA, pysähtyneenä kertaalleen 8× SSAA. Kuva piirretään vain kun
@@ -163,9 +192,10 @@ mitat (kokoluokka kuvista) ja saumojen syvyydet. Oura ei julkaise CAD-malleja.
 | `?match` | virallisen tuotekuvan kamera ja valkoinen tausta (validointi) |
 | `?match&mask` | sama siluettina ääriviivavertailua varten |
 | `?match=axial` | akselin suuntaisen sivukuvan kamera |
-| `?studio=contrast` tai `#contrast` | tumma horisontti (virallisten tuotekuvien kontrasti) |
+| `?studio=soft` tai `#soft` | aiempi pehmeä studio (oletus: Ouran rekonstruoitu studio) |
 | `?match&crop=x,y,w,h` | vertailunäkymän rajaus lähikuviin (1000 px asteikko) |
 | `?nohq` | ei SSAA:ta |
+| `?offscreen` | testitila: ei esitystä kanvaasille, kuvat luetaan `__capture()`:lla |
 | `?rot=x,y,z&zoom=…&pan=x,y,z` | alkunäkymä |
 
 ## Rakenne
@@ -173,15 +203,16 @@ mitat (kokoluokka kuvista) ja saumojen syvyydet. Oura ei julkaise CAD-malleja.
 ```
 index.html                 sivu, import map, värivalitsin
 src/config.js              mitat, sensorit, värit (mitatut arvot)
-src/geometry/profile.js    poikkileikkaus (janat, kaaret, Bézier) ja adaptiivinen näytteistys
+src/geometry/profile.js    poikkileikkaus (superellipsi + saumaurat) ja adaptiivinen näytteistys
 src/geometry/band.js       rungon tessellointi, materiaaliryhmät
 src/geometry/features.js   sensori-ikkunat, linssit, LED/PD-komponentit, merkki, levy
 src/materials.js           PBR-materiaalit, värit, sisäheijastukset, laikkumaskit
 src/studio.js              studioympäristö, tausta, varjo
+src/studioEnv.js           rekonstruoitu Ouran studio (48 × 24 säteilyruudukko)
 src/controls.js            kosketus- ja hiiriohjaus
 src/main.js                renderöijä, jälkikäsittely, renderöintisilmukka, vertailutila
 tools/                     validointityökalut: aksiaalikuvan mittaus, kameran ja profiilin
-                           sovitus, ääriviivavertailu
+                           sovitus, ääriviivavertailu, linssien mittaus, studion rekonstruktio
 ```
 
 Malli on itsenäinen havainnollistus. Se ei ole Ouran virallinen CAD-aineisto eikä käytä

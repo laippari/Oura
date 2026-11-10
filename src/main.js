@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { pass, renderOutput, screenUV, screenCoordinate, rand, vec2, vec3, vec4, float, length, smoothstep, mix, uniform } from 'three/tsl';
+import { pass, renderOutput, screenUV, screenCoordinate, rand, vec2, vec3, vec4, float, length, smoothstep, mix, uniform, reflectVector, dot, normalize, normalLocal, positionLocal } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { ssaaPass } from 'three/addons/tsl/display/SSAAPassNode.js';
 
@@ -37,26 +37,33 @@ async function main() {
   // --- Näkymä ---------------------------------------------------------------
   const scene = new THREE.Scene();
   scene.backgroundNode = createBackgroundNode();
-  // ?studio=contrast tai #contrast (jaetuissa linkeissä välittyy vain #-osa)
-  const studioVariant = params.get('studio') === 'contrast' || location.hash === '#contrast' ? 'contrast' : 'soft';
+  // Studio: oletuksena Ouran rekonstruoitu studio; ?studio=soft tai #soft = aiempi pehmeä studio
+  // (jaetuissa linkeissä välittyy vain #-osa)
+  const studioVariant = params.get('studio') === 'soft' || location.hash === '#soft' ? 'soft' : 'oura';
   addEventListener('hashchange', () => location.reload());
   const envTexture = createEnvironment(renderer, params.has('lowenv') ? 256 : 512, studioVariant);
   scene.environment = envTexture;
 
+  const matchMode = params.has('match');
+  // ?match = 43° tuotekuva (lineItem), ?match=axial = akselin suuntainen sivukuva (hero side view)
+  const matchAxial = params.get('match') === 'axial';
+  const MATCH = matchAxial
+    ? { fov: 9.06, dist: 190.7, near: 170, far: 210, offset: [0, 0], euler: [0, 0, 0] }
+    : { fov: 8.7761, dist: 176.001, near: 150, far: 200, offset: [500 - 499.6583, 500 - 540.372], euler: [0.7534, 0.00103, 0] };
+
   // --- Malli -----------------------------------------------------------------
-  const profile = buildProfile(RING);
+  const profile = buildProfile(matchMode ? { ...RING, innerRadius: matchAxial ? RING.matchInnerRadiusAxial : RING.matchInnerRadius } : RING);
   const band = buildBandGeometry(profile, RING);
   const Ri = profile.innerRadius;
   const Ro = profile.outerRadius;
-  const deg = THREE.MathUtils.degToRad;
 
   // Sensori-ikkunat: LEDit ±34°, fotodiodit ±60° (mitattu virallisista kuvista)
   const L = SENSORS.lens;
   const P = SENSORS.pocket;
   const windows = [];
   for (const sgn of [1, -1]) {
-    windows.push({ kind: 'led', thetaC: sgn * deg(SENSORS.led.angleDeg), sgn, hA: L.halfLength, hB: L.halfWidth });
-    windows.push({ kind: 'pd', thetaC: sgn * deg(SENSORS.pd.angleDeg), sgn, hA: L.halfLength, hB: L.halfWidth });
+    windows.push({ kind: 'led', thetaC: (sgn * SENSORS.led.arcMm) / Ri, sgn, hA: L.halfLength, hB: L.halfWidth });
+    windows.push({ kind: 'pd', thetaC: (sgn * SENSORS.pd.arcMm) / Ri, sgn, hA: L.halfLength, hB: L.halfWidth });
   }
   const pocketA = L.halfLength + P.margin;
   const pocketB = L.halfWidth + P.margin;
@@ -85,6 +92,7 @@ async function main() {
     ring.add(m);
     return m;
   };
+  const lensShape = (S) => ({ H: S.height, rr: S.edgeRadius, domeRadius: S.domeRadius });
   for (const w of windows) {
     add(
       buildRecessPatch({ surface: 'bore', R: Ri, thetaC: w.thetaC, hA: pocketA, hB: pocketB, rc: pocketR, margin: patchMargin, depth: P.depth, bevel: P.bevel, floorGap: 1, gapEnd: P.margin + 0.03, sOf: sOfBore, L: profile.length, Rf: profile.innerRadiusAt }),
@@ -93,7 +101,7 @@ async function main() {
     );
     const isLED = w.kind === 'led';
     const lens = add(
-      buildLens({ R: Ri, thetaC: w.thetaC, hA: L.halfLength, hB: L.halfWidth, rc: L.corner, H: isLED ? SENSORS.led.height : SENSORS.pd.height, rr: isLED ? L.edgeRadiusLED : L.edgeRadiusPD, base: -P.depth, Rf: profile.innerRadiusAt }),
+      buildLens({ R: Ri, thetaC: w.thetaC, hA: L.halfLength, hB: L.halfWidth, rc: L.corner, ...lensShape(isLED ? SENSORS.led : SENSORS.pd), base: -P.depth, Rf: profile.innerRadiusAt }),
       mats.lens,
       w.kind + '-lens'
     );
@@ -128,12 +136,6 @@ async function main() {
 
   // Lattia + kontaktivarjo
   const boundR = Math.hypot(profile.outerRadius, profile.halfWidth);
-  const matchMode = params.has('match');
-  // ?match = 43° tuotekuva (lineItem), ?match=axial = akselin suuntainen sivukuva (hero side view)
-  const matchAxial = params.get('match') === 'axial';
-  const MATCH = matchAxial
-    ? { fov: 9.06, dist: 190.7, near: 170, far: 210, offset: [0, 0], euler: [0, 0, 0] }
-    : { fov: 8.744, dist: 174.31, near: 150, far: 200, offset: [500 - 499.6772, 500 - 540.3558], euler: [0.75230, 0.00103, 0] };
   const floorY = -(boundR + 1.6);
   const ground = createGround(floorY);
   scene.add(ground.group);
@@ -394,6 +396,11 @@ async function main() {
   }
 
   // Testiapu: lukee lopullisen kuvan GPU:lta (headless-selaimissa WebGPU-kanvaasia ei voi kaapata).
+  // WebGPU-luennassa rivit on tasattu 256 tavuun (viimeinen rivi ilman täytettä); WebGL: tiivis.
+  const rowStride = (px, w, h) => {
+    const padded = Math.ceil((w * 4) / 256) * 256;
+    return px.length >= padded * (h - 1) + w * 4 && padded !== w * 4 ? padded : w * 4;
+  };
   window.__capture = async (hq = true) => {
     const w = Math.round(container.clientWidth * pixelRatio);
     const h = Math.round(container.clientHeight * pixelRatio);
@@ -410,7 +417,7 @@ async function main() {
     const ctx = c.getContext('2d');
     const img = ctx.createImageData(w, h);
     const flip = !renderer.backend.isWebGPUBackend;
-    const stride = Math.floor(px.length / h / 4) * 4; // WebGPU: rivit tasataan 256 tavuun
+    const stride = rowStride(px, w, h);
     for (let y = 0; y < h; y++) {
       const src = (flip ? h - 1 - y : y) * stride;
       img.data.set(px.subarray(src, src + w * 4), y * w * 4);
@@ -418,6 +425,50 @@ async function main() {
     for (let i = 3; i < img.data.length; i += 4) img.data[i] = 255;
     ctx.putImageData(img, 0, 0);
     return c.toDataURL('image/png');
+  };
+
+  // Testiapu: raakapassi ilman jälkikäsittelyä. mode 'refl' = heijastussuunta (maailma, 0.5 + 0.5·R),
+  // 'id' = pinta-alue (punainen = värillinen ulkokehys, vihreä = titaanin sisäosa, sininen = muut).
+  window.__captureDebug = async (mode) => {
+    const w = Math.round(container.clientWidth * pixelRatio);
+    const h = Math.round(container.clientHeight * pixelRatio);
+    const rt = new THREE.RenderTarget(w, h, { depthBuffer: true });
+    const mk = (c) => {
+      const m = new THREE.MeshBasicNodeMaterial();
+      // 'inward': pinnan normaalin suunta kohti akselia (1 = reiän sisäpinta, 0 = ulospäin)
+      const inward = dot(normalLocal, normalize(vec3(positionLocal.x, positionLocal.y, 0)).negate()).mul(0.5).add(0.5);
+      m.colorNode = mode === 'refl' ? reflectVector.mul(0.5).add(0.5) : mode === 'inward' ? vec3(inward) : vec3(...c);
+      return m;
+    };
+    const saved = [];
+    ring.traverse((o) => {
+      if (!o.isMesh) return;
+      saved.push([o, o.material]);
+      o.material = o === bandMesh ? [mk([1, 0, 0]), mk([0, 1, 0])] : mk([0, 0, 1]);
+    });
+    const bg = scene.backgroundNode;
+    const tm = renderer.toneMapping;
+    const cs = renderer.outputColorSpace;
+    scene.backgroundNode = vec3(0);
+    renderer.toneMapping = THREE.NoToneMapping;
+    renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
+    placeCamera();
+    renderer.setRenderTarget(rt);
+    renderer.render(scene, camera);
+    renderer.setRenderTarget(null);
+    const px = await renderer.readRenderTargetPixelsAsync(rt, 0, 0, w, h);
+    for (const [o, m] of saved) o.material = m;
+    scene.backgroundNode = bg;
+    renderer.toneMapping = tm;
+    renderer.outputColorSpace = cs;
+    rt.dispose();
+    const stride = rowStride(px, w, h);
+    const flip = !renderer.backend.isWebGPUBackend;
+    const out = new Uint8Array(w * h * 4);
+    for (let y = 0; y < h; y++) out.set(px.subarray((flip ? h - 1 - y : y) * stride, (flip ? h - 1 - y : y) * stride + w * 4), y * w * 4);
+    let bin = '';
+    for (let i = 0; i < out.length; i += 0x8000) bin += String.fromCharCode.apply(null, out.subarray(i, i + 0x8000));
+    return { w, h, data: btoa(bin) };
   };
 
   window.__viewer = {
