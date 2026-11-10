@@ -1,0 +1,191 @@
+// Käyttöliittymä: alareunan pilleri ja nouseva alapaneeli (värit, räjäytys, sensorit, tumma
+// studio, näkymät), sensorien tilarivi ja teemanvaihdon verho. Ei kirjastokomponentteja.
+
+const $ = (id) => document.getElementById(id);
+
+const STATUS = {
+  hr: { text: 'Syke', sub: 'vihreä valo', led: '#35d873' },
+  spo2: { text: 'Veren happi', sub: 'punainen + infrapuna', led: '#ff3d2e' },
+};
+
+export function createUI({ finishes, onFinish, onExplode, onSensors, onDark, onSequence, onSheet }) {
+  const body = document.body;
+  const sheet = $('sheet');
+  const pill = $('pill');
+  const state = { explode: false, sensors: false, dark: false, open: false };
+
+  // --- värit ---
+  const bar = $('finishes');
+  finishes.forEach((f, i) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.id = 'finish-' + f.id;
+    b.title = f.name;
+    b.setAttribute('aria-label', f.name);
+    b.style.setProperty('--sw-a', f.swatch[0]);
+    b.style.setProperty('--sw-b', f.swatch[1]);
+    if (f.brushed) b.classList.add('brushed');
+    b.addEventListener('click', () => onFinish(i));
+    bar.appendChild(b);
+  });
+  const setFinish = (i) => {
+    const f = finishes[i];
+    bar.querySelectorAll('button').forEach((b, k) => b.setAttribute('aria-pressed', k === i ? 'true' : 'false'));
+    $('finish-name').textContent = f.name;
+    $('pill-name').textContent = f.name;
+    const dot = pill.querySelector('.dot');
+    dot.style.setProperty('--sw-a', f.swatch[0]);
+    dot.style.setProperty('--sw-b', f.swatch[1]);
+  };
+
+  // --- valinnat ---
+  const toggle = (id, key, cb) => {
+    const el = $(id);
+    el.addEventListener('click', () => {
+      state[key] = !state[key];
+      el.setAttribute('aria-pressed', String(state[key]));
+      cb(state[key]);
+    });
+    return (on) => {
+      state[key] = on;
+      el.setAttribute('aria-pressed', String(on));
+    };
+  };
+  const setExplode = toggle('tg-explode', 'explode', onExplode);
+  const setSensors = toggle('tg-sensors', 'sensors', onSensors);
+  const setDark = toggle('tg-dark', 'dark', onDark);
+
+  // --- näkymät ---
+  $('views').querySelectorAll('button').forEach((b) => {
+    b.addEventListener('click', () => {
+      close();
+      // paneeli ehtii laskeutua ennen ajon alkua
+      setTimeout(() => onSequence(b.dataset.seq), 180);
+    });
+  });
+
+  // --- paneeli: avaus, sulkeminen, vetäminen ---
+  const sheetHeight = () => sheet.getBoundingClientRect().height;
+  function open() {
+    if (state.open) return;
+    state.open = true;
+    body.classList.add('sheet-open');
+    sheet.setAttribute('aria-hidden', 'false');
+    pill.setAttribute('aria-expanded', 'true');
+    onSheet(true, sheetHeight());
+  }
+  function close() {
+    if (!state.open) return;
+    state.open = false;
+    body.classList.remove('sheet-open');
+    sheet.setAttribute('aria-hidden', 'true');
+    pill.setAttribute('aria-expanded', 'false');
+    sheet.style.transform = '';
+    onSheet(false, 0);
+  }
+  pill.addEventListener('click', open);
+  addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') close();
+  });
+
+  let drag = null;
+  sheet.addEventListener('pointerdown', (e) => {
+    drag = { y: e.clientY, t: e.timeStamp, dy: 0, active: false, id: e.pointerId };
+  });
+  sheet.addEventListener('pointermove', (e) => {
+    if (!drag || e.pointerId !== drag.id) return;
+    const dy = e.clientY - drag.y;
+    if (!drag.active && dy > 6) {
+      drag.active = true;
+      sheet.classList.add('dragging');
+      sheet.setPointerCapture(e.pointerId);
+    }
+    if (drag.active) {
+      drag.dy = Math.max(0, dy);
+      drag.v = drag.dy / Math.max(1, e.timeStamp - drag.t);
+      sheet.style.transform = `translate(-50%, ${drag.dy}px)`;
+    }
+  });
+  const endDrag = () => {
+    if (!drag) return;
+    const d = drag;
+    drag = null;
+    if (!d.active) return;
+    sheet.classList.remove('dragging');
+    // vetämisen jälkeen ei klikkiä painikkeelle
+    const block = (ev) => {
+      ev.stopPropagation();
+      ev.preventDefault();
+    };
+    sheet.addEventListener('click', block, { capture: true, once: true });
+    setTimeout(() => sheet.removeEventListener('click', block, { capture: true }), 50);
+    if (d.dy > 70 || (d.v || 0) > 0.6) close();
+    else sheet.style.transform = '';
+  };
+  sheet.addEventListener('pointerup', endDrag);
+  sheet.addEventListener('pointercancel', endDrag);
+
+  // --- sensorien tilarivi ---
+  const status = $('status');
+  const led = status.querySelector('.led');
+  let lastMode = null;
+  const setStatus = (info) => {
+    if (!info) {
+      if (lastMode !== null) status.classList.remove('on');
+      lastMode = null;
+      return;
+    }
+    if (info.mode !== lastMode) {
+      const s = STATUS[info.mode];
+      $('status-text').textContent = s.text;
+      $('status-sub').textContent = s.sub;
+      status.style.setProperty('--led', s.led);
+      status.classList.add('on');
+      lastMode = info.mode;
+    }
+    led.style.transform = `scale(${0.8 + 0.45 * info.beat})`;
+  };
+
+  // --- ajon nimi alareunassa ---
+  const seqlabel = $('seqlabel');
+  let seqTimer = 0;
+  const showSequence = (name) => {
+    body.classList.add('seq');
+    $('seqname').textContent = name;
+    seqlabel.classList.add('on');
+    clearTimeout(seqTimer);
+    seqTimer = setTimeout(() => seqlabel.classList.remove('on'), 2600);
+  };
+  const hideSequence = () => {
+    body.classList.remove('seq');
+    seqlabel.classList.remove('on');
+  };
+
+  // --- teemanvaihto pehmeän verhon takana ---
+  const veil = $('veil');
+  const transition = (color, swap) => {
+    veil.style.background = color;
+    veil.classList.add('on');
+    setTimeout(() => {
+      swap();
+      requestAnimationFrame(() => requestAnimationFrame(() => veil.classList.remove('on')));
+    }, 240);
+  };
+
+  return {
+    setFinish,
+    setExplode,
+    setSensors,
+    setDark,
+    open,
+    close,
+    get isOpen() {
+      return state.open;
+    },
+    sheetHeight,
+    setStatus,
+    showSequence,
+    hideSequence,
+    transition,
+  };
+}
