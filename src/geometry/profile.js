@@ -4,6 +4,7 @@
 // Referenssin ääriviivaan sovitettiin kahden eksponentin superellipsi
 //     |z / A|^p + |(r - rc) / B|^q = 1,   p ≈ 3.62 (vaaka), q ≈ 2.51 (pysty)
 // (keskivirhe 0.5 px), ja se skaalataan Ouran virallisiin mittoihin 6.09 × 2.28 mm.
+// Mallissa pyöristystä on loivennettu varovasti (p 3.9, q 2.68, ks. config.js).
 // Skaalaus säilyttää eksponentit, joten muodon luonne pysyy samana – soikio vain venyy vaakaan.
 //
 // Rakenne näkyy pinnalla ohuina saumoina (ei portaita): värillinen kuori – kapea rako –
