@@ -12,7 +12,8 @@ viisi elokuvamaista näkymää.
 python3 -m http.server 8000      # → http://localhost:8000
 ```
 
-Sivu toimii myös GitHub Pagesissa (repo root). three.js ladataan jsDelivr-CDN:stä
+Sivu toimii myös GitHub Pagesissa repon juuresta (Settings → Pages → Deploy from a branch →
+`main` / root; `.nojekyll` ohittaa Jekyll-käsittelyn). three.js ladataan jsDelivr-CDN:stä
 (`three@0.186.1`, lukittu versio).
 
 | Ele | Toiminto |
