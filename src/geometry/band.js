@@ -8,10 +8,11 @@ import * as THREE from 'three/webgpu';
 
 const TAU = Math.PI * 2;
 
-export function buildBandGeometry(profile, cfg) {
-  const prof = profile.samples;
+// samples: koko profiili tai sen osa (räjäytyskuvan kappaleet) – kierros pysyy samana.
+export function buildBandGeometry(profile, cfg, samples = profile.samples, angularSegments = cfg.angularSegments) {
+  const prof = samples;
   const nP = prof.length;
-  const nT = cfg.angularSegments + 1;
+  const nT = angularSegments + 1;
   const cols = nP;
 
   const vertCount = nT * cols;
@@ -75,8 +76,8 @@ export function buildBandGeometry(profile, cfg) {
   geo.setAttribute('mark', new THREE.BufferAttribute(mark, 1));
   geo.setAttribute('gap', new THREE.BufferAttribute(gap, 1));
   geo.setIndex(new THREE.BufferAttribute(index, 1));
-  geo.addGroup(0, outerIdx.length, 0);
-  geo.addGroup(outerIdx.length, innerIdx.length, 1);
+  if (outerIdx.length) geo.addGroup(0, outerIdx.length, 0);
+  if (innerIdx.length) geo.addGroup(outerIdx.length, innerIdx.length, 1);
   geo.computeBoundingSphere();
   geo.computeBoundingBox();
 

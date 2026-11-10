@@ -2,8 +2,9 @@
 
 Oura Ring 5 fysikaalisesti renderöitynä mobiililaitteelle, kaikilla kuudella virallisella
 värillä. Muoto, rakenne ja sensorit on **mitattu Ouran virallisista tuotekuvista** ja
-validoitu niitä vasten (ks. alla). Käyttöliittymänä on vain mallin kääntäminen ja tutkiminen
-sekä värivalitsin.
+validoitu niitä vasten (ks. alla). Mallia käännetään ja tutkitaan eleillä; muut toiminnot ovat
+alareunasta nousevassa paneelissa: värit, räjäytyskuva, sensorien valot, vaalea/tumma studio ja
+viisi elokuvamaista näkymää.
 
 ## Avaaminen
 
@@ -20,7 +21,17 @@ Sivu toimii myös GitHub Pagesissa (repo root). three.js ladataan jsDelivr-CDN:s
 | 2 sormea | nipistys = zoom sormien kohtaan, siirto = panorointi, kierto = rulla |
 | rulla / trackpad | zoom osoittimen kohtaan |
 | kaksoisnapautus | paluu alkunäkymään |
-| värinapit | Silver · Black · Stealth · Brushed Silver · Gold · Deep Rose |
+| alareunan pilleri | avaa paneelin (sulkeutuu vetämällä alas, napauttamalla mallia tai Esc) |
+
+**Paneeli** (Ouran tyylinen, lämmin luonnonvalkoinen; tummassa studiossa tumma):
+
+| Kohta | Toiminto |
+| --- | --- |
+| Väri | Silver · Black · Stealth · Brushed Silver · Gold · Deep Rose (toimii myös räjäytettynä) |
+| Räjäytys | sormus aukeaa räjäytyskuvaksi ja kokoutuu takaisin; räjäytettyä pinoa voi pyöritellä |
+| Sensorit | LEDit päälle: syke (vihreä) ja veren happi (punainen + infrapuna) vuorottelevat |
+| Tumma | vaalea ↔ tumma studio, valaistus ja käyttöliittymä vaihtuvat yhdessä |
+| Näkymät | Esittely · Sensori · Läpi · Profiili · Räjäytys – jatkuvat kamera-ajot; kosketus lopettaa |
 
 ## Mitä mallissa on
 
@@ -80,6 +91,36 @@ molemmilla puolilla). Titaaninen sisäosa ja reiän pinta ovat kaikissa väreiss
   metallisormet ja kaksi bondipadia.
 - Komponentit yhdistetään materiaaleittain (34 meshiä 92:n sijaan), mikä vähentää
   piirtokutsuja mobiililaitteilla.
+
+**Räjäytyskuva** (järjestys Ouran julkaisemasta räjäytysanimaatiosta, ylhäältä alas):
+
+| Osa | Toteutus |
+| --- | --- |
+| lukitusrengas | värillinen, leikattu pinnan saumoista (rako – sauma) |
+| sisäkuori | titaani, 0,4 mm seinämä; sensoriaukot ja yläosan levy, räjäytettynä ikkunat avoimia |
+| akku | kaareva kenno 200° kaarella sensorien vastapuolella, hienorakeinen musta kääre, kieleke |
+| runkorengas | kiillotettu titaani |
+| ulkokuori | värillinen kuori suuntausmerkkeineen, sisäpinta käsittelemätöntä titaania |
+| piirilevy | taipuisa musta nauha, leveät tyynyt sensorien kohdalla |
+| tiivisteet | neljä mustaa kehystä sensorien ympärillä |
+| sensorit | 2 × tri-LED ja 2 × fotodiodi linsseineen ja alustoineen |
+| lukitusrengas | värillinen |
+
+Kuoret ja lukitusrenkaat leikataan samasta pinnasta, joten koottuna sormus on täsmälleen sama
+kuin ennen (siluetti ja sävyt ennallaan). Sisäosien mitat ovat arvioita Ouran kuvista.
+Räjäytettynä pino kääntyy pystyyn (sensorit takaseinällä linssit kameraan päin, kuten Ouran
+kuvassa), kamera vetäytyy ja lattia laskeutuu. Kappaleet lähtevät liikkeelle porrastetusti.
+
+**Sensorien valot** (`src/sensors.js`). Oura Ring 5:ssä on kaksi tri-LEDiä (vihreä, punainen,
+infrapuna) ja kaksi fotodetektoria: 2 LEDiä × 3 aallonpituutta × 2 detektoria = 12 valopolkua.
+Vihreä ja infrapuna mittaavat sykettä, HRV:tä ja hengitystä; punainen ja infrapuna veren
+happisaturaatiota. Rengas valitsee tilanteeseen sopivan LEDin ja säätää kirkkautta (Smart Sensing).
+Havainnollistuksessa tilat vuorottelevat (syke 9 s, happi 4 s, ristihäivytys), ja valo hengittää
+PPG-pulssiaallon tahdissa (62/min). Infrapuna näkyy vain himmeänä tummanpunaisena. Todellisuudessa
+LEDit välkkyvät satoja kertoja sekunnissa, mikä näkyy silmälle tasaisena valona. LEDin valo
+heijastuu sisäpintaan: vastakkaiselle seinälle osuu laaja keila ja linssin ympärille pehmeä
+kajo. Tumma studio korostaa tätä, vaaleassa vaikutus on hillitty. Ylälaidan tilarivi kertoo
+mittaustilan.
 
 **Muut yksityiskohdat:**
 - suuntausmerkki ulkopinnalla kämmenen puolella: stadionin muotoinen matala upotus, 3,1 × 1,8 mm
@@ -177,6 +218,21 @@ mitat (kokoluokka kuvista) ja saumojen syvyydet. Oura ei julkaise CAD-malleja.
   L_sisä ≈ 1,2 · L_studio + 0,25. Tämä painotetaan pinnan sisäänpäin osoittavuudella, joten
   titaaniset sivupinnat saavat pelkän studion. Samalla studion tumma horisonttivyö ei enää
   piirry sisäpintaan terävänä varjona.
+- **Tumma studio:** Ouran kalibroitu studio himmennettynä. Horisontti ja takaosa ovat lähes
+  mustia, ylä- ja etuvalot jäävät pehmeiksi liukuväreiksi, ja kaksi kapeaa reunavaloa
+  takaviistossa piirtää muodon valojuovina. Sisätilan lisävalo on pieni, joten sensorien valo
+  erottuu. Vaihto renderöi ympäristön uudelleen samaan PMREM-kohteeseen, joten materiaaleja ei
+  käännetä uudelleen. Vaihdon peittää lyhyt pehmeä verho.
+- **Näkymät** (`src/sequences.js`), kaikki jatkuvia silmukoita:
+  - *Esittely:* hidas pyörintä, kallistus ja etäisyys hengittävät.
+  - *Sensori:* lähikuva sensoriparista (LED ja fotodiodi); kohde liukuu hitaasti niiden välillä.
+  - *Läpi:* symmetrinen keskikuva, josta kamera liukuu sisään ja lentää matalalla LEDin yli
+    renkaan läpi; silmukan sauma häivytetään täsmälleen taustaan.
+  - *Profiili:* pystyssä oleva rengas kolmen neljäsosan kulmasta, soikea profiili ja saumat.
+  - *Räjäytys:* räjäytetty pino pyörii oman akselinsa ympäri.
+
+  Siirtymät ajoon ja takaisin ovat pehmeitä (kamera kiertää renkaan ympäri ja katsoo koko ajan
+  sitä kohti).
 - **Linssit:** kirkkaat linssit ovat oikeaa valoa läpäisevää ja taittavaa materiaalia.
 - **Varjo:** pehmeä VSM-kontaktivarjo.
 - **Laatu:** liikkeessä 4× MSAA, pysähtyneenä kertaalleen 8× SSAA. Kuva piirretään vain kun
@@ -193,6 +249,9 @@ mitat (kokoluokka kuvista) ja saumojen syvyydet. Oura ei julkaise CAD-malleja.
 | `?match&mask` | sama siluettina ääriviivavertailua varten |
 | `?match=axial` | akselin suuntaisen sivukuvan kamera |
 | `?studio=soft` tai `#soft` | aiempi pehmeä studio (oletus: Ouran rekonstruoitu studio) |
+| `?dark` tai `#dark` | tumma studio |
+| `?explode` · `?sensors` | räjäytyskuva · sensorien valot päällä alusta alkaen |
+| `?seq=hero\|sensor\|through\|profile\|exploded` | käynnistä näkymä (`&seqt=` aika sekunteina) |
 | `?match&crop=x,y,w,h` | vertailunäkymän rajaus lähikuviin (1000 px asteikko) |
 | `?nohq` | ei SSAA:ta |
 | `?offscreen` | testitila: ei esitystä kanvaasille, kuvat luetaan `__capture()`:lla |
@@ -201,15 +260,20 @@ mitat (kokoluokka kuvista) ja saumojen syvyydet. Oura ei julkaise CAD-malleja.
 ## Rakenne
 
 ```
-index.html                 sivu, import map, värivalitsin
+index.html                 sivu, import map, käyttöliittymän rakenne ja tyylit
 src/config.js              mitat, sensorit, värit (mitatut arvot)
 src/geometry/profile.js    poikkileikkaus (superellipsi + saumaurat) ja adaptiivinen näytteistys
 src/geometry/band.js       rungon tessellointi, materiaaliryhmät
-src/geometry/features.js   sensori-ikkunat, linssit, LED/PD-komponentit, merkki, levy
+src/geometry/features.js   sensori-ikkunat, linssit, LED/PD-komponentit, merkki, levy, tiivisteet
+src/geometry/parts.js      räjäytyskuvan kappaleet: rungon jako, leikkauspinnat, sisäosat
 src/materials.js           PBR-materiaalit, värit, sisäheijastukset, laikkumaskit
 src/studio.js              studioympäristö, tausta, varjo
 src/studioEnv.js           rekonstruoitu Ouran studio (48 × 24 säteilyruudukko)
 src/controls.js            kosketus- ja hiiriohjaus
+src/explode.js             räjäytyksen animaatio
+src/sensors.js             sensorien valotila (PPG-pulssi, mittaustilat)
+src/sequences.js           elokuvamaiset näkymät ja pehmeät siirtymät
+src/ui.js                  alapaneeli, tilarivi, teemanvaihto
 src/main.js                renderöijä, jälkikäsittely, renderöintisilmukka, vertailutila
 tools/                     validointityökalut: aksiaalikuvan mittaus, kameran ja profiilin
                            sovitus, ääriviivavertailu, linssien mittaus, studion rekonstruktio

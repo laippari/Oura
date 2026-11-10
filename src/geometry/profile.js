@@ -65,8 +65,8 @@ export function buildProfile(cfg) {
   };
   const S = cfg.seams;
   const grooves = [];
-  for (const g of [S.shellGap, S.ringSeam]) {
-    for (const s0 of crossings(Ro - g.depthFromOuter)) grooves.push({ s0, w: g.halfWidth, d: g.depth, dark: g.dark });
+  for (const [kind, g] of [['shellGap', S.shellGap], ['ringSeam', S.ringSeam]]) {
+    for (const s0 of crossings(Ro - g.depthFromOuter)) grooves.push({ kind, s0, w: g.halfWidth, d: g.depth, dark: g.dark });
   }
   const rRegion = Ro - S.ringSeam.depthFromOuter; // värillinen (PVD) yläpuolella, titaani alapuolella
 
@@ -137,6 +137,8 @@ export function buildProfile(cfg) {
     centerRadius: rc,
     halfThickness: B,
     exponents: { p, q },
+    // saumojen keskikohdat kierron järjestyksessä (räjäytyskuvan osat leikataan näistä)
+    grooves: grooves.map((g) => ({ kind: g.kind, s0: g.s0 })).sort((a, b) => a.s0 - b.s0),
     sBoreMid: 0,
     sOuterMid: ds[Math.round(N / 2)],
     innerRadiusAt,

@@ -33,6 +33,7 @@ import {
   cos,
   sign,
   select,
+  exp,
 } from 'three/tsl';
 
 const { Node } = THREE;
@@ -177,15 +178,16 @@ class InteriorReflectionNode extends Node {
     // renkaan sisustaa, ulkopinta ei niitä näe). Mitattu virallisesta 43°-kuvasta:
     // L_sisä ≈ gain · L_studio + fill. Painotetaan pinnan sisäänpäin osoittavuudella, joten
     // kuperat titaanisivut saavat pelkän studion.
-    const gain = P.interiorLight?.gain ?? 1;
-    const fill = P.interiorLight?.fill ?? 0;
+    const asNode = (v, d) => (v == null ? float(d) : typeof v === 'number' ? float(v) : v);
+    const gain = asNode(P.interiorLight?.gain, 1);
+    const fill = asNode(P.interiorLight?.fill, 0);
 
     return Fn(([reflWorld, level]) => {
       const f0 = vec3(P.wallF0.r, P.wallF0.g, P.wallF0.b);
       const p = vec3(positionLocal).toVar();
       const radial = normalize(vec3(positionLocal.x, positionLocal.y, 0));
       const wIn = smoothstep(0.35, 0.85, dot(normalize(normalLocal), radial.negate())).toVar();
-      const k = float(1).add(wIn.mul(gain - 1)).toVar();
+      const k = float(1).add(wIn.mul(gain.sub(1))).toVar();
       const fillV = vec3(wIn.mul(fill)).toVar();
       const lit = (dir, lvl) => sample(dir, lvl).mul(k).add(fillV);
       const d = normalize(modelWorldMatrixInverse.mul(vec4(reflWorld, 0)).xyz).toVar();
@@ -343,24 +345,70 @@ export function createMaterials({ envTexture, profile, windows, outerPatches, bo
     wallRoughness: 0.1,
     windows: windows.map((w) => ({ th: w.thetaC, A: w.hA + 0.15, B: w.hB + 0.15 })),
     windowReflect: 0.45,
-    // sisätilan lisävalo (mitattu virallisesta kuvasta, ks. InteriorReflectionNode)
-    interiorLight: { gain: 1.2, fill: 0.25 },
+    // sisätilan lisävalo (vaalea studio: mitattu virallisesta kuvasta, ks. InteriorReflectionNode;
+    // tumma studio asettaa omat arvonsa)
+    interiorLight: { gain: uniform(1.2), fill: uniform(0.25) },
   };
 
-  const makeShell = (name, maskRegions) => {
+  // --- Sensorien valot (aktiivinen tila) ---------------------------------------------
+  // Tri-LED: vihreä (syke, HRV), punainen + infrapuna (veren happi). IR näkyy silmälle vain
+  // himmeänä tummanpunaisena. Uniformit päivitetään animaatiossa (sensors.js).
+  const sensor = {
+    green: uniform(0),
+    red: uniform(0),
+    ir: uniform(0),
+    explode: uniform(0),
+    spill: uniform(0.35), // valon heijastuminen sisäpintaan: vaaleassa studiossa hillitty
+  };
+  const GREEN = vec3(0.12, 1.0, 0.36);
+  const RED = vec3(1.0, 0.045, 0.025);
+  const IRC = vec3(0.32, 0.01, 0.025);
+  const ledLight = GREEN.mul(sensor.green).add(RED.mul(sensor.red)).add(IRC.mul(sensor.ir));
+  // Valo sisäpinnalle: LED säteilee kohti akselia (Lambert-tyyppinen keila), lähellä linssiä
+  // pehmeä hajavalo. Koottuna vain (räjäytyskuvassa LEDit ovat muualla).
+  const ledWindows = windows.filter((w) => w.kind === 'led');
+  const spill = (() => {
+    const P0 = positionLocal;
+    const N0 = normalize(normalLocal);
+    let acc = float(0);
+    for (const w of ledWindows) {
+      const s0 = Math.sin(w.thetaC);
+      const c0 = Math.cos(w.thetaC);
+      const cL = vec3(profile.innerRadius * s0, -profile.innerRadius * c0, 0);
+      const nL = vec3(-s0, c0, 0);
+      const d = P0.sub(cL);
+      const r2 = dot(d, d).add(1e-4);
+      const dir = d.div(sqrt(r2));
+      const emit = pow(max(dot(nL, dir), 0), 1.3);
+      const recv = max(dot(N0, dir.negate()), 0);
+      const far = emit.mul(recv).mul(42).div(r2.add(12));
+      const near = float(0.5).mul(exp(r2.mul(-1 / 2.2)));
+      acc = acc.add(far).add(near);
+    }
+    return ledLight.mul(acc).mul(sensor.spill).mul(sensor.explode.oneMinus());
+  })();
+
+  const makeShell = (name, maskRegions, withWindows = false) => {
     const m = new THREE.MeshPhysicalNodeMaterial({ name, metalness: 1 });
     m.lightsNode = noLights;
     const lathe = mx_noise_float(vec3(uv().y.mul(520), 0.0, uv().x.mul(3))).mul(0.02);
     const base = clamp(float(0.09).add(lathe).add(microR.mul(0.06)), 0.05, 0.4);
     m.roughnessNode = mix(mix(base, float(0.22).add(mx_noise_float(positionLocal.mul(45)).mul(0.04)), mark), float(0.45), gapA);
     m.colorNode = mix(vec3(shellF0.r, shellF0.g, shellF0.b), vec3(0.06, 0.06, 0.062), gapA);
+    if (withWindows) {
+      // räjäytyskuvassa linssin paikka on avoin ikkuna (tumma aukko)
+      const open = attribute('win', 'float').mul(sensor.explode);
+      m.colorNode = mix(m.colorNode, vec3(0.012, 0.012, 0.013), open);
+      m.roughnessNode = mix(m.roughnessNode, float(0.7), open);
+    }
     m.envNode = new InteriorReflectionNode(envTexture, interiorParams);
+    m.emissiveNode = spill;
     m.aoNode = cavity;
     if (maskRegions) m.maskNode = patchMaskNode(maskRegions, profile.innerRadius);
     return m;
   };
   const inner = makeShell('Inner shell (titanium)', borePatches);
-  const innerPatch = makeShell('Inner shell patch', null);
+  const innerPatch = makeShell('Inner shell patch', null, true);
 
   // --- Sensori-ikkunan linssi: kirkas optinen epoksi --------------------------------
   const lens = new THREE.MeshPhysicalNodeMaterial({
@@ -378,6 +426,11 @@ export function createMaterials({ envTexture, profile, windows, outerPatches, bo
     specularIntensity: 1,
   });
   lens.lightsNode = noLights;
+  // LED-linssi hehkuu sisältä, kun sensorit ovat päällä (sironta optisessa epoksissa)
+  const lensLED = lens.clone();
+  lensLED.name = 'Sensor lens (LED)';
+  lensLED.lightsNode = noLights;
+  lensLED.emissiveNode = ledLight.mul(0.28);
 
   const std = (name, params) => {
     const m = new THREE.MeshPhysicalNodeMaterial({ name, ...params });
@@ -385,23 +438,20 @@ export function createMaterials({ envTexture, profile, windows, outerPatches, bo
     return m;
   };
 
+  const glow = (base, baseK, col, chan, k) => vec3(...base).mul(baseK).add(col.mul(chan.mul(k)));
   const internals = {
     ledSubstrate: std('LED ceramic substrate', { color: new THREE.Color(0.86, 0.86, 0.84), roughness: 0.42 }),
     greenZone: std('Green emitter (silicone)', {
       color: new THREE.Color(0.72, 0.9, 0.76),
       roughness: 0.25,
-      emissive: new THREE.Color(0.2, 0.9, 0.42),
-      emissiveIntensity: 0.32,
     }),
     redZone: std('Red/IR emitter (silicone)', {
       color: new THREE.Color(0.95, 0.7, 0.6),
       roughness: 0.25,
-      emissive: new THREE.Color(1.0, 0.4, 0.26),
-      emissiveIntensity: 0.3,
     }),
-    dieGreen: std('InGaN die', { color: new THREE.Color(0.32, 0.62, 0.42), roughness: 0.15, metalness: 0.1, emissive: new THREE.Color(0.25, 1, 0.5), emissiveIntensity: 0.35, clearcoat: 1 }),
-    dieRed: std('AlGaInP die', { color: new THREE.Color(0.85, 0.45, 0.33), roughness: 0.18, emissive: new THREE.Color(1, 0.4, 0.25), emissiveIntensity: 0.25 }),
-    dieIR: std('GaAs IR die', { color: new THREE.Color(0.72, 0.42, 0.34), roughness: 0.2, emissive: new THREE.Color(0.9, 0.35, 0.22), emissiveIntensity: 0.18 }),
+    dieGreen: std('InGaN die', { color: new THREE.Color(0.32, 0.62, 0.42), roughness: 0.15, metalness: 0.1, clearcoat: 1 }),
+    dieRed: std('AlGaInP die', { color: new THREE.Color(0.85, 0.45, 0.33), roughness: 0.18 }),
+    dieIR: std('GaAs IR die', { color: new THREE.Color(0.72, 0.42, 0.34), roughness: 0.2 }),
     pdBody: std('PD package', { color: new THREE.Color(0.02, 0.02, 0.022), roughness: 0.5 }),
     silicon: std('Si photodiode (AR coated)', {
       color: new THREE.Color(0.03, 0.031, 0.034),
@@ -415,6 +465,27 @@ export function createMaterials({ envTexture, profile, windows, outerPatches, bo
     aluminium: std('Al metallization', { color: new THREE.Color(0.3, 0.31, 0.32), metalness: 1, roughness: 0.45 }),
     gold: std('Au', { color: new THREE.Color(1.0, 0.766, 0.336), metalness: 1, roughness: 0.2 }),
   };
+  // emitterit: lepotilassa hieman fluoresoiva sävy (kuten virallisissa kuvissa), aktiivisena kirkas
+  internals.greenZone.emissiveNode = glow([0.2, 0.9, 0.42], 0.32, GREEN, sensor.green, 5.5);
+  internals.dieGreen.emissiveNode = glow([0.25, 1, 0.5], 0.35, GREEN, sensor.green, 11);
+  internals.redZone.emissiveNode = glow([1.0, 0.4, 0.26], 0.3, RED, sensor.red, 4.5);
+  internals.dieRed.emissiveNode = glow([1, 0.4, 0.25], 0.25, RED, sensor.red, 10);
+  internals.dieIR.emissiveNode = glow([0.9, 0.35, 0.22], 0.18, IRC, sensor.ir, 6);
+
+  // --- Räjäytyskuvan sisäosat --------------------------------------------------------
+  const parts = {
+    // leikkauspinnat: käsittelemätön titaani (PVD-pinnoite on vain ulkopinnoissa)
+    cut: std('Raw titanium (cut faces)', { color: new THREE.Color(0.36, 0.355, 0.35), metalness: 1, roughness: 0.32 }),
+    frame: std('Inner frame (polished titanium)', { color: new THREE.Color(0.6, 0.6, 0.6), metalness: 1, roughness: 0.07 }),
+    battery: std('Li-ion cell (black wrap)', { color: new THREE.Color(0.02, 0.02, 0.021), roughness: 0.62 }),
+    pcb: std('Flex PCB (black coverlay)', { color: new THREE.Color(0.016, 0.016, 0.018), roughness: 0.38, clearcoat: 0.6, clearcoatRoughness: 0.3 }),
+    gasket: std('Sensor gasket', { color: new THREE.Color(0.035, 0.035, 0.037), roughness: 0.7 }),
+    base: std('Sensor module base', { color: new THREE.Color(0.03, 0.03, 0.032), roughness: 0.4 }),
+  };
+  // akun kääre: hieno rakeinen pinta (virallisen räjäytyskuvan mukaan)
+  const grain = mx_noise_float(positionLocal.mul(38));
+  parts.battery.roughnessNode = float(0.6).add(grain.mul(0.18));
+  parts.battery.colorNode = vec3(0.02, 0.02, 0.021).mul(float(1).add(grain.mul(0.35)));
 
   const setFinish = (f) => {
     fin.color.value.setRGB(f.f0[0], f.f0[1], f.f0[2]);
@@ -424,5 +495,10 @@ export function createMaterials({ envTexture, profile, windows, outerPatches, bo
     fin.bead.value = f.bead || 0;
   };
 
-  return { outer, outerPatch, inner, innerPatch, lens, internals, setFinish };
+  const setInteriorLight = (gain, fill) => {
+    interiorParams.interiorLight.gain.value = gain;
+    interiorParams.interiorLight.fill.value = fill;
+  };
+
+  return { outer, outerPatch, inner, innerPatch, lens, lensLED, internals, parts, sensor, setFinish, setInteriorLight };
 }

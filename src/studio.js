@@ -91,19 +91,44 @@ export function buildStudioScene() {
   return scene;
 }
 
-export function createEnvironment(renderer, size = 512, variant = 'oura') {
+// Tumma studio: Ouran kalibroitu studio himmennettynä – horisontti ja takaosa lähes mustia,
+// ylä- ja etuvalot jäävät pehmeiksi liukuväreiksi. Lisäksi kaksi kapeaa reunavaloa
+// takaviistossa piirtää muodon terävinä valojuovina (tummien tuotekuvien tyyli).
+function buildDarkStudio() {
+  const scene = new THREE.Scene();
+  const tex = upsampleEnv(STUDIO_ENV, 384, 192);
+  const mat = new THREE.MeshBasicNodeMaterial({ side: THREE.BackSide });
+  const d = positionWorld.normalize();
+  const u = atan(d.x, d.z).div(Math.PI * 2).add(0.5);
+  const v = asin(clamp(d.y, -1, 1)).div(Math.PI).add(0.5);
+  const up = mix(float(0.1), float(0.8), smoothstep(-0.1, 0.8, d.y));
+  const front = mix(float(0.45), float(1.0), smoothstep(-0.5, 0.5, d.z));
+  mat.colorNode = texture(tex, vec2(u, v)).rgb.mul(up).mul(front);
+  scene.add(new THREE.Mesh(new THREE.SphereGeometry(40, 128, 64), mat));
+  scene.add(aim(softbox(3.2, 22, 1.2, 0.42), -15, 1, -8));
+  scene.add(aim(softbox(3.2, 22, 0.95, 0.42), 15, 1, -7));
+  return scene;
+}
+
+// Ympäristö: yksi PMREM-kohde, johon studio renderöidään uudelleen vaihdettaessa. Tekstuuri-
+// olio pysyy samana, joten materiaaleja ei käännetä uudelleen.
+export function createStudio(renderer, size = 512, initial = 'oura') {
   const pmrem = new THREE.PMREMGenerator(renderer);
-  const studio = variant === 'oura' ? buildOuraStudio() : buildStudioScene();
-  const rt = pmrem.fromScene(studio, 0, 0.1, 100, { size });
-  studio.traverse((o) => {
-    if (o.isMesh) {
-      o.geometry.dispose();
-      o.material.dispose();
-      o.material.colorNode?.value?.dispose?.();
-    }
-  });
-  pmrem.dispose();
-  return rt.texture;
+  let rt = null;
+  const build = (variant) => (variant === 'dark' ? buildDarkStudio() : variant === 'soft' ? buildStudioScene() : buildOuraStudio());
+  const set = (variant) => {
+    const studio = build(variant);
+    rt = pmrem.fromScene(studio, 0, 0.1, 100, { size, renderTarget: rt });
+    studio.traverse((o) => {
+      if (o.isMesh) {
+        o.geometry.dispose();
+        o.material.dispose();
+      }
+    });
+    return rt.texture;
+  };
+  const texture = set(initial);
+  return { texture, set };
 }
 
 // ---------------------------------------------------------------------------
@@ -111,13 +136,18 @@ export function createEnvironment(renderer, size = 512, variant = 'oura') {
 // ---------------------------------------------------------------------------
 export function createBackgroundNode() {
   const plain = uniform(0);
+  const theme = uniform(0); // 0 = vaalea, 1 = tumma
+  const center = uniform(new THREE.Vector2(0.5, 0.54));
   const p = screenUV;
-  const d = length(p.sub(vec2(0.5, 0.54)).mul(vec2(1.0, 1.2)));
-  const inner = vec3(0.86, 0.858, 0.852);
-  const outer = vec3(0.6, 0.598, 0.592);
-  const grad = mix(inner, outer, smoothstep(0.1, 1.0, d));
+  const d = length(p.sub(center).mul(vec2(1.0, 1.2)));
+  const light = mix(vec3(0.86, 0.858, 0.852), vec3(0.6, 0.598, 0.592), smoothstep(0.1, 1.0, d));
+  // tumma: lämmin lähes musta, keskellä hieman vaaleampi (varjo ja muoto erottuvat)
+  const dark = mix(vec3(0.05, 0.047, 0.044), vec3(0.008, 0.0076, 0.0072), smoothstep(0.05, 0.95, d));
+  const grad = mix(light, dark, theme);
   const node = mix(grad, vec3(1.0), plain);
   node.plain = plain;
+  node.theme = theme;
+  node.center = center;
   return node;
 }
 
@@ -128,7 +158,8 @@ export function createGround(floorY) {
   // Kontaktivarjo vaalealla taustalla
   const shadowMat = new THREE.ShadowNodeMaterial({ color: 0x1a1816, opacity: 0.32, depthWrite: false });
   // häivytys ennen varjokameran rajaa (muuten rajasta näkyy ohut viiva taustassa)
-  shadowMat.opacityNode = float(0.32).mul(float(1).sub(smoothstep(13, 21, length(positionWorld.xz))));
+  const shadowOpacity = uniform(0.32);
+  shadowMat.opacityNode = shadowOpacity.mul(float(1).sub(smoothstep(13, 21, length(positionWorld.xz))));
   const shadowPlane = new THREE.Mesh(new THREE.PlaneGeometry(46, 46), shadowMat);
   shadowPlane.rotation.x = -Math.PI / 2;
   shadowPlane.position.y = floorY;
@@ -153,5 +184,5 @@ export function createGround(floorY) {
   light.shadow.bias = -0.0004;
   group.add(light, light.target);
 
-  return { group, light, shadowMat };
+  return { group, light, shadowMat, shadowOpacity };
 }

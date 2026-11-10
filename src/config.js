@@ -86,3 +86,25 @@ export const VIEW = {
   // Alkuasento: sama suhteellinen kulma kuin Ouran virallisessa tuotekuvassa (43.5°)
   heroEuler: [33.5, 0, 0],
 };
+
+// Räjäytyskuva (Ouran julkaiseman räjäytysanimaation järjestys ylhäältä alas): lukitusrengas,
+// titaaninen sisäkuori, akku, runkorengas, värillinen ulkokuori, piirilevy, tiivisteet,
+// sensorit, lukitusrengas. Siirto akselin suuntaan (mm, + = ylös räjäytetyssä asennossa) ja
+// liikkeellelähdön järjestys (0 = ensin).
+export const EXPLODE = {
+  parts: {
+    lockA: { offset: 33, order: 0 },
+    inner: { offset: 23, order: 2 },
+    battery: { offset: 13.5, order: 3 },
+    frame: { offset: 5, order: 4 },
+    outer: { offset: -4.5, order: 4 },
+    pcb: { offset: -13.5, order: 3 },
+    gaskets: { offset: -20.5, order: 2 },
+    sensors: { offset: -27, order: 1 },
+    lockB: { offset: -34, order: 0 },
+  },
+  // asento räjäytettynä (Euler YXZ, astetta): akseli pystyssä, yläpää 18° kameraan päin,
+  // sensorit takaseinällä linssit kameraan päin (kuten Ouran räjäytyskuvassa)
+  euler: [-108, 168, 0],
+  halfHeight: 42, // pinon puolikorkeus kuvassa marginaaleineen (kameran sovitus, lattia)
+};

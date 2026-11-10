@@ -1,6 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { makeGeometry } from './parts.js';
 
 // Paikalliset pinnan yksityiskohdat, mitattu virallisista tuotekuvista:
 //  • neljä sensori-ikkunaa sisäpinnalla (2 × tri-LED ±34°, 2 × fotodiodi ±60°):
@@ -47,7 +48,7 @@ export function rrContour(hA, hB, rc, nE = 22, nC = 14) {
 
 // Kartoitus (u, v, h) -> renkaan koordinaatisto. Pinta seuraa poikkileikkauksen kaarevuutta:
 // Rf(z) antaa pinnan säteen akselin kohdassa z, ja h mitataan pinnan todellista normaalia pitkin.
-function makeMapper(surface, R, thetaC, zc, Rf = () => R) {
+export function makeMapper(surface, R, thetaC, zc, Rf = () => R) {
   const sign = surface === 'bore' ? -1 : 1; // h kasvaa sisäpinnalla kohti akselia
   const e = 1e-4;
   return (u, v, h) => {
@@ -131,7 +132,7 @@ export function buildRecessPatch(o) {
   const depthAt = (d) => (d >= 0 ? 0 : d <= -bevel ? depth : depth * (0.5 - 0.5 * Math.cos(Math.PI * (-d / bevel))));
   const slopeAt = (d) => (d >= 0 || d <= -bevel ? 0 : -depth * 0.5 * Math.PI * Math.sin(Math.PI * (-d / bevel)) / bevel);
 
-  const pos = [], nrm = [], uvs = [], tan = [], cav = [], mk = [], gp = [], idx = [];
+  const pos = [], nrm = [], uvs = [], tan = [], cav = [], mk = [], gp = [], win = [], idx = [];
   let nPer = 0;
   for (const d of offs) {
     const contour = rrContour(hA + d, hB + d, rc + d);
@@ -152,10 +153,11 @@ export function buildRecessPatch(o) {
       cav.push(1 - 0.35 * (dep / depth));
       mk.push(floorMark * t);
       gp.push(floorGap * t * tOut);
+      win.push(floorGap * t * (1 - tOut)); // linssin alla: räjäytyskuvassa avoin ikkuna
     }
   }
   ringIndices(offs.length, nPer, idx);
-  return finishGeometry(pos, nrm, idx, [['uv', uvs, 2], ['tangent', tan, 4], ['cavity', cav, 1], ['mark', mk, 1], ['gap', gp, 1]]);
+  return finishGeometry(pos, nrm, idx, [['uv', uvs, 2], ['tangent', tan, 4], ['cavity', cav, 1], ['mark', mk, 1], ['gap', gp, 1], ['win', win, 1]]);
 }
 
 // Kirkas linssi: pystysuora sivuseinä, pyöristetty yläreuna, tasainen yläpinta.
@@ -386,3 +388,56 @@ export function buildPDInternals(R, thetaC, dir, mats, ku = 1) {
   }
   return group;
 }
+
+// Räjäytyskuvan osat sisäpinnalla: sensorin tiiviste (pyöristetty kehys taskun ja linssin
+// välissä) ja sensorimoduulin alusta (laatta taskun pohjan alla). Koottuna piilossa.
+function boreSolid(o, frame) {
+  const { R, thetaC, hA, hB, rc, width = 0, h0, h1, Rf } = o;
+  const map = makeMapper('bore', R, thetaC, 0, Rf);
+  const outerC = rrContour(hA, hB, rc, 18, 10);
+  const innerC = frame ? rrContour(hA - width, hB - width, Math.max(0.05, rc - width), 18, 10) : null;
+  const pos = [];
+  const nrm = [];
+  const idx = [];
+  const put = (c, h, nl) => {
+    const m = map(c.u, c.v, h);
+    pos.push(...m.p);
+    nrm.push(...[0, 1, 2].map((i) => nl[0] * m.eu[i] + nl[1] * m.ev[i] + nl[2] * m.eh[i]));
+  };
+  const strip = (cA, hA_, nA, cB, hB_, nB) => {
+    const base = pos.length / 3;
+    const n = cA.length;
+    for (let k = 0; k < n; k++) {
+      put(cA[k], hA_, nA(cA[k]));
+      put(cB[k], hB_, nB(cB[k]));
+    }
+    for (let k = 0; k < n; k++) {
+      const a = base + k * 2;
+      const b = base + ((k + 1) % n) * 2;
+      idx.push(a, b, a + 1, a + 1, b, b + 1);
+    }
+  };
+  const fan = (c, h, nl) => {
+    const base = pos.length / 3;
+    put({ u: 0, v: 0 }, h, nl);
+    for (const p of c) put(p, h, nl);
+    for (let k = 0; k < c.length; k++) idx.push(base, base + 1 + k, base + 1 + ((k + 1) % c.length));
+  };
+  const side = (c) => [c.nu, c.nv, 0];
+  const up = () => [0, 0, 1];
+  const down = () => [0, 0, -1];
+  strip(outerC, h0, side, outerC, h1, side);
+  if (frame) {
+    const inward = (c) => [-c.nu, -c.nv, 0];
+    strip(outerC, h1, up, innerC, h1, up);
+    strip(innerC, h1, inward, innerC, h0, inward);
+    strip(innerC, h0, down, outerC, h0, down);
+  } else {
+    fan(outerC, h1, [0, 0, 1]);
+    fan(outerC, h0, [0, 0, -1]);
+  }
+  return makeGeometry(pos, nrm, idx);
+}
+
+export const buildGasket = (o) => boreSolid(o, true);
+export const buildModuleBase = (o) => boreSolid(o, false);
