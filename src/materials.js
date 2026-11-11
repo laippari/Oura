@@ -145,17 +145,27 @@ class InteriorReflectionNode extends Node {
       return pmremTexture(env, dw, lvl);
     };
 
-    const domeMask = (q) => {
+    // Sensori-ikkunat osumapisteessä: pyöristetyn suorakaiteen etäisyysfunktio (terävä, peilimäinen
+    // reuna). Palauttaa ikkunan peiton (kaikki ikkunat) ja LED-ikkunoiden säteilyn painon.
+    const windowsAt = (q) => {
       // kulma kämmenen puolen keskilinjasta (θ = 0 on -Y)
       const th = atan(q.x, q.y.negate());
-      let m = float(0);
+      let cover = float(0);
+      let led = float(0);
       for (const w of P.windows) {
-        const du = abs(th.sub(w.th)).mul(P.R0).div(w.A);
-        const dv = abs(q.z).div(w.B);
-        const r = pow(du, 4).add(pow(dv, 4));
-        m = max(m, float(1).sub(smoothstep(0.8, 1.1, r)));
+        const u = th.sub(w.th).mul(P.R0);
+        const dq = abs(vec2(u, q.z)).sub(vec2(w.hA - w.rc, w.hB - w.rc));
+        const sdf = length(max(dq, 0)).add(min(max(dq.x, dq.y), 0)).sub(w.rc);
+        const inside = float(1).sub(smoothstep(-0.05, 0.05, sdf));
+        cover = max(cover, inside);
+        if (w.led) {
+          // ikkunan tasainen hehku + kirkas ydin emitterien kohdalla + kapea kehä reunan ulkopuolella
+          const core = exp(dot(vec2(u, q.z), vec2(u, q.z)).mul(-1 / 0.85));
+          const halo = exp(max(sdf, 0).mul(-1 / 0.55)).mul(0.1);
+          led = max(led, inside.mul(float(1.1).add(core.mul(2.4))).add(halo.mul(inside.oneMinus())));
+        }
       }
-      return m;
+      return { cover, led };
     };
 
     // Reiän todellinen pinta (soikion sisäpuolisko): r(z) = rc − B·(1 − |z/A|^p)^(1/q).
@@ -178,9 +188,15 @@ class InteriorReflectionNode extends Node {
     // renkaan sisustaa, ulkopinta ei niitä näe). Mitattu virallisesta 43°-kuvasta:
     // L_sisä ≈ gain · L_studio + fill. Painotetaan pinnan sisäänpäin osoittavuudella, joten
     // kuperat titaanisivut saavat pelkän studion.
+    // Lisävalo on suunnattu: virallisen kuvan mukaan sitä tulee eniten akselin suunnasta (aukoista
+    // sisään), fill = fill0 + fill1 · (d · akseli)². Tasainen lisävalo teki metallista muovisen
+    // näköisen, suunnattu säilyttää heijastusten muodon.
     const asNode = (v, d) => (v == null ? float(d) : typeof v === 'number' ? float(v) : v);
     const gain = asNode(P.interiorLight?.gain, 1);
-    const fill = asNode(P.interiorLight?.fill, 0);
+    const fill0 = asNode(P.interiorLight?.fill0, 0);
+    const fill1 = asNode(P.interiorLight?.fill1, 0);
+    // LEDien valo (aktiivinen tila): ikkunat säteilevät, ja valo kulkee peiliheijastuksina
+    const ledLight = P.ledLight || vec3(0);
 
     return Fn(([reflWorld, level]) => {
       const f0 = vec3(P.wallF0.r, P.wallF0.g, P.wallF0.b);
@@ -188,8 +204,7 @@ class InteriorReflectionNode extends Node {
       const radial = normalize(vec3(positionLocal.x, positionLocal.y, 0));
       const wIn = smoothstep(0.35, 0.85, dot(normalize(normalLocal), radial.negate())).toVar();
       const k = float(1).add(wIn.mul(gain.sub(1))).toVar();
-      const fillV = vec3(wIn.mul(fill)).toVar();
-      const lit = (dir, lvl) => sample(dir, lvl).mul(k).add(fillV);
+      const lit = (dir, lvl) => sample(dir, lvl).mul(k).add(vec3(wIn.mul(fill0.add(fill1.mul(dir.z.mul(dir.z))))));
       const d = normalize(modelWorldMatrixInverse.mul(vec4(reflWorld, 0)).xyz).toVar();
       const through = vec3(1).toVar();
       const color = vec3(0).toVar();
@@ -227,7 +242,10 @@ class InteriorReflectionNode extends Node {
         const nrm = normalize(vec3(q.x.div(rq), q.y.div(rq), rInD(q.z).negate())).negate().toVar();
         const cosT = clamp(dot(d.negate(), nrm), 0, 1);
         const fres = f0.add(vec3(1).sub(f0).mul(pow(float(1).sub(cosT), 5)));
-        const wallRefl = mix(fres, fres.mul(P.windowReflect ?? 0.35), domeMask(q));
+        const win = windowsAt(q);
+        // LED-ikkuna näkyy heijastuksessa valonlähteenä
+        color.addAssign(through.mul(w).mul(win.led).mul(ledLight));
+        const wallRefl = mix(fres, fres.mul(P.windowReflect ?? 0.35), win.cover);
         through.assign(through.mul(wallRefl).mul(w));
         d.assign(reflect(d, nrm));
         p.assign(q);
@@ -336,20 +354,6 @@ export function createMaterials({ envTexture, profile, windows, outerPatches, bo
   const outer = makeFrame('Frame (PVD finish)', outerPatches);
   const outerPatch = makeFrame('Frame patch', null);
 
-  // --- Sisäkuori: kiillotettu titaani, keskinäisheijastukset -------------------------
-  const shellF0 = new THREE.Color(0.6, 0.6, 0.6); // titaani; sama F0 kuin studion rekonstruktiossa (sivupinnat täsmäävät ±1 %)
-  const interiorParams = {
-    R0: profile.innerRadius,
-    bore: { A: profile.halfWidth, B: profile.halfThickness, rc: profile.centerRadius, p: profile.exponents.p, q: profile.exponents.q },
-    wallF0: shellF0,
-    wallRoughness: 0.1,
-    windows: windows.map((w) => ({ th: w.thetaC, A: w.hA + 0.15, B: w.hB + 0.15 })),
-    windowReflect: 0.45,
-    // sisätilan lisävalo (vaalea studio: mitattu virallisesta kuvasta, ks. InteriorReflectionNode;
-    // tumma studio asettaa omat arvonsa)
-    interiorLight: { gain: uniform(1.2), fill: uniform(0.25) },
-  };
-
   // --- Sensorien valot (aktiivinen tila) ---------------------------------------------
   // Tri-LED: vihreä (syke, HRV), punainen + infrapuna (veren happi). IR näkyy silmälle vain
   // himmeänä tummanpunaisena. Uniformit päivitetään animaatiossa (sensors.js).
@@ -358,35 +362,43 @@ export function createMaterials({ envTexture, profile, windows, outerPatches, bo
     red: uniform(0),
     ir: uniform(0),
     explode: uniform(0),
-    spill: uniform(0.35), // valon heijastuminen sisäpintaan: vaaleassa studiossa hillitty
+    reflect: uniform(1), // LEDien peiliheijastusten voimakkuus sisäpinnassa
   };
   const GREEN = vec3(0.12, 1.0, 0.36);
   const RED = vec3(1.0, 0.045, 0.025);
   const IRC = vec3(0.32, 0.01, 0.025);
   const ledLight = GREEN.mul(sensor.green).add(RED.mul(sensor.red)).add(IRC.mul(sensor.ir));
-  // Valo sisäpinnalle: LED säteilee kohti akselia (Lambert-tyyppinen keila), lähellä linssiä
-  // pehmeä hajavalo. Koottuna vain (räjäytyskuvassa LEDit ovat muualla).
+  // Metalli ei sirota valoa: LEDien valo näkyy sisäpinnassa peiliheijastuksina (ks.
+  // InteriorReflectionNode). Vain linssin reunan vieressä on hyvin pieni hajavalo (epoksin
+  // reunasta vuotava valo). Koottuna vain (räjäytyskuvassa LEDit ovat muualla).
   const ledWindows = windows.filter((w) => w.kind === 'led');
+  const assembled = sensor.explode.oneMinus();
   const spill = (() => {
-    const P0 = positionLocal;
-    const N0 = normalize(normalLocal);
     let acc = float(0);
     for (const w of ledWindows) {
       const s0 = Math.sin(w.thetaC);
       const c0 = Math.cos(w.thetaC);
-      const cL = vec3(profile.innerRadius * s0, -profile.innerRadius * c0, 0);
-      const nL = vec3(-s0, c0, 0);
-      const d = P0.sub(cL);
-      const r2 = dot(d, d).add(1e-4);
-      const dir = d.div(sqrt(r2));
-      const emit = pow(max(dot(nL, dir), 0), 1.3);
-      const recv = max(dot(N0, dir.negate()), 0);
-      const far = emit.mul(recv).mul(42).div(r2.add(12));
-      const near = float(0.5).mul(exp(r2.mul(-1 / 2.2)));
-      acc = acc.add(far).add(near);
+      const d = positionLocal.sub(vec3(profile.innerRadius * s0, -profile.innerRadius * c0, 0));
+      acc = acc.add(exp(dot(d, d).mul(-1 / 1.5)));
     }
-    return ledLight.mul(acc).mul(sensor.spill).mul(sensor.explode.oneMinus());
+    return ledLight.mul(acc).mul(0.16).mul(assembled);
   })();
+
+  // --- Sisäkuori: kiillotettu titaani, keskinäisheijastukset -------------------------
+  const shellF0 = new THREE.Color(0.6, 0.6, 0.6); // titaani; sama F0 kuin studion rekonstruktiossa (sivupinnat täsmäävät ±1 %)
+  const interiorParams = {
+    R0: profile.innerRadius,
+    bore: { A: profile.halfWidth, B: profile.halfThickness, rc: profile.centerRadius, p: profile.exponents.p, q: profile.exponents.q },
+    wallF0: shellF0,
+    wallRoughness: 0.1,
+    // ikkuna heijastuksissa = linssi + tiivisterako
+    windows: windows.map((w) => ({ th: w.thetaC, led: w.kind === 'led', hA: w.hA + 0.1, hB: w.hB + 0.1, rc: 0.82 })),
+    windowReflect: 0.45,
+    ledLight: ledLight.mul(sensor.reflect).mul(assembled),
+    // sisätilan lisävalo (vaalea studio: mitattu virallisesta kuvasta, ks. InteriorReflectionNode;
+    // tumma studio asettaa omat arvonsa)
+    interiorLight: { gain: uniform(1.2), fill0: uniform(0.16), fill1: uniform(0.36) },
+  };
 
   const makeShell = (name, maskRegions, withWindows = false) => {
     const m = new THREE.MeshPhysicalNodeMaterial({ name, metalness: 1 });
@@ -440,7 +452,7 @@ export function createMaterials({ envTexture, profile, windows, outerPatches, bo
 
   const glow = (base, baseK, col, chan, k) => vec3(...base).mul(baseK).add(col.mul(chan.mul(k)));
   const internals = {
-    ledSubstrate: std('LED ceramic substrate', { color: new THREE.Color(0.86, 0.86, 0.84), roughness: 0.42 }),
+    ledSubstrate: std('LED package (white)', { color: new THREE.Color(0.9, 0.9, 0.885), roughness: 0.5 }),
     greenZone: std('Green emitter (silicone)', {
       color: new THREE.Color(0.72, 0.9, 0.76),
       roughness: 0.25,
@@ -450,27 +462,28 @@ export function createMaterials({ envTexture, profile, windows, outerPatches, bo
       roughness: 0.25,
     }),
     dieGreen: std('InGaN die', { color: new THREE.Color(0.32, 0.62, 0.42), roughness: 0.15, metalness: 0.1, clearcoat: 1 }),
-    dieRed: std('AlGaInP die', { color: new THREE.Color(0.85, 0.45, 0.33), roughness: 0.18 }),
-    dieIR: std('GaAs IR die', { color: new THREE.Color(0.72, 0.42, 0.34), roughness: 0.2 }),
+    dieRed: std('AlGaInP die', { color: new THREE.Color(0.78, 0.13, 0.08), roughness: 0.22 }),
+    dieIR: std('GaAs IR die', { color: new THREE.Color(0.16, 0.085, 0.08), roughness: 0.25 }),
     pdBody: std('PD package', { color: new THREE.Color(0.02, 0.02, 0.022), roughness: 0.5 }),
     silicon: std('Si photodiode (AR coated)', {
-      color: new THREE.Color(0.03, 0.031, 0.034),
-      roughness: 0.16,
-      metalness: 0.3,
-      iridescence: 0.18,
-      iridescenceIOR: 1.9,
-      iridescenceThicknessRange: [220, 300],
+      // heijastuksenestopinnoite: lähes musta, heikko sinertävä heijastus
+      color: new THREE.Color(0.006, 0.008, 0.018),
+      roughness: 0.2,
+      metalness: 0,
+      specularIntensity: 0.35,
+      specularColor: new THREE.Color(0.55, 0.65, 1.0),
     }),
     pdFinger: std('PD finger metallization', { color: new THREE.Color(0.12, 0.125, 0.13), metalness: 1, roughness: 0.55 }),
-    aluminium: std('Al metallization', { color: new THREE.Color(0.3, 0.31, 0.32), metalness: 1, roughness: 0.45 }),
+    pdEdge: std('PD die edge (AR coating)', { color: new THREE.Color(0.03, 0.3, 0.27), roughness: 0.3, metalness: 0.4 }),
+    dieStripe: std('LED top electrode', { color: new THREE.Color(0.07, 0.03, 0.03), roughness: 0.5 }),
     gold: std('Au', { color: new THREE.Color(1.0, 0.766, 0.336), metalness: 1, roughness: 0.2 }),
   };
   // emitterit: lepotilassa hieman fluoresoiva sävy (kuten virallisissa kuvissa), aktiivisena kirkas
   internals.greenZone.emissiveNode = glow([0.2, 0.9, 0.42], 0.32, GREEN, sensor.green, 5.5);
   internals.dieGreen.emissiveNode = glow([0.25, 1, 0.5], 0.35, GREEN, sensor.green, 11);
   internals.redZone.emissiveNode = glow([1.0, 0.4, 0.26], 0.3, RED, sensor.red, 4.5);
-  internals.dieRed.emissiveNode = glow([1, 0.4, 0.25], 0.25, RED, sensor.red, 10);
-  internals.dieIR.emissiveNode = glow([0.9, 0.35, 0.22], 0.18, IRC, sensor.ir, 6);
+  internals.dieRed.emissiveNode = glow([1, 0.2, 0.12], 0.12, RED, sensor.red, 10);
+  internals.dieIR.emissiveNode = glow([0.5, 0.1, 0.08], 0.03, IRC, sensor.ir, 6);
 
   // --- Räjäytyskuvan sisäosat --------------------------------------------------------
   const parts = {
@@ -495,9 +508,10 @@ export function createMaterials({ envTexture, profile, windows, outerPatches, bo
     fin.bead.value = f.bead || 0;
   };
 
-  const setInteriorLight = (gain, fill) => {
+  const setInteriorLight = (gain, fill0, fill1) => {
     interiorParams.interiorLight.gain.value = gain;
-    interiorParams.interiorLight.fill.value = fill;
+    interiorParams.interiorLight.fill0.value = fill0;
+    interiorParams.interiorLight.fill1.value = fill1;
   };
 
   return { outer, outerPatch, inner, innerPatch, lens, lensLED, internals, parts, sensor, setFinish, setInteriorLight };

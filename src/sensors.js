@@ -4,11 +4,13 @@
 // Vihreä + IR mittaavat sykettä, HRV:tä ja hengitystä; punainen + IR veren happisaturaatiota.
 // Rengas valitsee kuhunkin tilanteeseen sopivan LEDin ja säätää sen kirkkautta (Smart Sensing).
 //
-// Havainnollistus: tilat vuorottelevat pehmeällä ristihäivytyksellä, ja valo "hengittää"
-// PPG-pulssiaallon tahdissa (62/min). Todellisuudessa LEDit pulssittavat satoja kertoja sekunnissa,
-// mikä näkyy silmälle tasaisena valona; vaihteleva on fotodetektorin mittaama heijastus.
+// Havainnollistus: tilat vuorottelevat pehmeällä ristihäivytyksellä, ja valo sykkii
+// PPG-pulssiaallon tahdissa (76/min) himmeten selvästi lyöntien välissä. Todellisuudessa LEDit
+// pulssittavat satoja kertoja sekunnissa, mikä näkyy silmälle tasaisena valona; vaihteleva on
+// fotodetektorin mittaama heijastus.
 
-const BPM = 62;
+const BPM = 76;
+const FLOOR = 0.22; // kirkkaus lyöntien välissä (1 = huippu)
 const CYCLE = 15; // s: syke 0–9, vaihto, happi 10–14, vaihto
 const smooth = (a, b, x) => {
   const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
@@ -17,8 +19,8 @@ const smooth = (a, b, x) => {
 
 // PPG-aalto: jyrkkä systolinen nousu, dikroottinen kuoppa ja hidas lasku (0..1)
 function ppg(phase) {
-  const sys = Math.exp(-(((phase - 0.16) / 0.075) ** 2));
-  const dia = 0.38 * Math.exp(-(((phase - 0.44) / 0.11) ** 2));
+  const sys = Math.exp(-(((phase - 0.18) / 0.1) ** 2));
+  const dia = 0.36 * Math.exp(-(((phase - 0.5) / 0.13) ** 2));
   return Math.min(1, sys + dia);
 }
 
@@ -55,7 +57,7 @@ export class SensorLights {
     const g = 1 - smooth(9, 10, c) + smooth(14, 15, c);
     const r = 1 - g;
     const beat = ppg((this.t * BPM) / 60 % 1);
-    const pulse = 0.82 + 0.18 * beat;
+    const pulse = FLOOR + (1 - FLOOR) * beat;
     this.u.green.value = this.level * g * pulse;
     this.u.red.value = this.level * r * pulse;
     // IR multipleksoidaan punaisen kanssa (näkyy himmeänä)

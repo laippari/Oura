@@ -85,11 +85,13 @@ molemmilla puolilla). Titaaninen sisäosa ja reiän pinta ovat kaikissa väreiss
   Korkeudet haettiin renderöimällä malli samalla kameralla ja säätämällä, kunnes mallin
   profiili osui virallisiin ±0,01 mm:n tarkkuudella. LEDin huippu on upotuksen pohjasta
   0,69 mm, mikä vastaa Ouran ilmoittamaa 0,7 mm:n kupukorkeutta.
-- **Tri-LED:** valkoinen keraaminen alusta, pyöristetty vihreä emitterialue isolla sirulla ja
-  kapea pyöristetty punainen/IR-alue, jossa kaksi pientä sirua ristielektrodeineen ja ohuine
-  bondilankoineen. Punainen alue on keskilinjan puolella.
-- **Fotodiodi:** lähes musta heijastuksenestopinnoitettu piisiru, hyvin hienot tummat
-  metallisormet ja kaksi bondipadia.
+- **Tri-LED** (oikean sormuksen makrokuvan ja Ouran lähirenderöinnin mukaan): valkoinen kotelo,
+  jossa kaksi upotettua heijastinkuppia. Isommassa kupissa on vihreä siru liitostyynyineen,
+  kapeammassa punainen siru (raidallinen elektrodi) ja tumma infrapunasiru päällekkäin;
+  kultaiset bondilangat kuppien reunoille. Vihreä kuppi on fotodiodin puolella.
+- **Fotodiodi:** musta kotelo linssin reunaan asti, neliömäinen lähes musta piisiru
+  (heijastuksenestopinnoite, sinivihreä reuna, hienot sormet) siirrettynä kohti LEDiä, kaksi
+  kultaista liitostyynyä vastakkaisella reunalla ja bondilangat sirun kulmiin.
 - Komponentit yhdistetään materiaaleittain (34 meshiä 92:n sijaan), mikä vähentää
   piirtokutsuja mobiililaitteilla.
 
@@ -116,12 +118,14 @@ kuvassa), kamera vetäytyy ja lattia laskeutuu. Kappaleet lähtevät liikkeelle 
 infrapuna) ja kaksi fotodetektoria: 2 LEDiä × 3 aallonpituutta × 2 detektoria = 12 valopolkua.
 Vihreä ja infrapuna mittaavat sykettä, HRV:tä ja hengitystä; punainen ja infrapuna veren
 happisaturaatiota. Rengas valitsee tilanteeseen sopivan LEDin ja säätää kirkkautta (Smart Sensing).
-Havainnollistuksessa tilat vuorottelevat (syke 9 s, happi 4 s, ristihäivytys), ja valo hengittää
-PPG-pulssiaallon tahdissa (62/min). Infrapuna näkyy vain himmeänä tummanpunaisena. Todellisuudessa
-LEDit välkkyvät satoja kertoja sekunnissa, mikä näkyy silmälle tasaisena valona. LEDin valo
-heijastuu sisäpintaan: vastakkaiselle seinälle osuu laaja keila ja linssin ympärille pehmeä
-kajo. Tumma studio korostaa tätä, vaaleassa vaikutus on hillitty. Ylälaidan tilarivi kertoo
-mittaustilan.
+Havainnollistuksessa tilat vuorottelevat (syke 9 s, happi 4 s, ristihäivytys), ja valo sykkii
+PPG-pulssiaallon tahdissa (76/min) himmeten lyöntien välissä noin viidennekseen. Infrapuna näkyy
+vain himmeänä tummanpunaisena. Todellisuudessa LEDit välkkyvät satoja kertoja sekunnissa, mikä
+näkyy silmälle tasaisena valona. Kiillotettu metalli ei sirota valoa, joten LEDien valo näkyy
+sisäpinnassa **peiliheijastuksina**: valaisevat ikkunat ovat valonlähteitä samassa
+säteenjäljityksessä, joka laskee sisäpinnan keskinäisheijastukset, ja niiden kuvat toistuvat
+seinää pitkin. (Aiempi tasainen hehku sai metallin näyttämään muovilta.) Ylälaidan tilarivi
+kertoo mittaustilan.
 
 **Muut yksityiskohdat:**
 - suuntausmerkki ulkopinnalla kämmenen puolella: stadionin muotoinen matala upotus, 3,1 × 1,8 mm
@@ -143,8 +147,7 @@ kirkkaus samalla kameralla):
 Sisäpuolen titaani on neutraalin harmaa (F0 0,6) kuten virallisissa kuvissa.
 
 Vertailu virallisiin 43°-kuviin samalla kameralla (lineaarisen säteilyn suhde, 1,00 = sama):
-sisäpinta 0,98 kaikilla kuudella värillä, titaaniset sivupinnat 0,92–1,01 ja ulkopinnan
-yläosa 0,88–1,08. Brushed Silverin F0 ja karheus säädettiin tämän vertailun perusteella
+sisäpinta 0,97–1,03, titaaniset sivupinnat 0,92–1,09 ja ulkopinnan yläosa 0,88–1,08. Brushed Silverin F0 ja karheus säädettiin tämän vertailun perusteella
 (F0 0,63, karheus 0,28).
 
 ## Miten muoto validoitiin
@@ -207,7 +210,10 @@ mitat (kokoluokka kuvista) ja saumojen syvyydet. Oura ei julkaise CAD-malleja.
   kaikkien kuuden värin titaaniset sivut. Säteily ryhmiteltiin 7,5°:n soluihin (dataa 1050 /
   1152 solussa), peilattiin vasen–oikea-symmetriseksi ja tasoitettiin log-asteikolla (jäännös
   0,16 rms, ≈ 17 %). Ruudukko interpoloidaan kuutiollisella B-splinillä, joten heijastuksissa ei
-  näy ruudukon kulmia eikä teräviä softbox-reunoja. Lopuksi se esisuodatetaan PMREM-kartaksi.
+  näy ruudukon kulmia eikä teräviä softbox-reunoja. Napojen lähellä rivit sumennetaan
+  atsimuutissa niin, että pehmeys pallon pinnalla pysyy vakiona (3,5°): muuten suoraan alas
+  osoittavaan heijastukseen syntyy nipistynyt piste. Lopuksi kartta esisuodatetaan
+  PMREM-kartaksi.
   Aiempi pehmeä studio on vaihtoehtona: `#soft`.
 - **Sisäpinnan heijastukset:** kiillotettu sisäpinta heijastaa vastakkaista seinäänsä. Säde
   jäljitetään sävyttimessä soikean reiän todellista pintaa vasten (Newton-iteraatio, oikeat
@@ -215,10 +221,12 @@ mitat (kokoluokka kuvista) ja saumojen syvyydet. Oura ei julkaise CAD-malleja.
   mikä tuotti pyöritettäessä sisäpuolelle terävän väärän varjojuovan.
 - **Sisätilan valo:** virallisissa kuvissa koveran sisäpinnan heijastukset ovat kirkkaampia
   ja tasaisempia kuin pelkkä kaukainen studio selittäisi. Renkaan sisustaa valaisevat lähellä
-  olevat valkoiset pinnat, joita kuperat ulkopinnat eivät näe. Virallisesta kuvasta mitattiin
-  L_sisä ≈ 1,2 · L_studio + 0,25. Tämä painotetaan pinnan sisäänpäin osoittavuudella, joten
-  titaaniset sivupinnat saavat pelkän studion. Samalla studion tumma horisonttivyö ei enää
-  piirry sisäpintaan terävänä varjona.
+  olevat valkoiset pinnat, joita kuperat ulkopinnat eivät näe. Virallisesta kuvasta mitattiin,
+  että lisävaloa tulee eniten akselin suunnasta (aukoista sisään):
+  L_sisä ≈ 1,2 · L_studio + 0,16 + 0,36 · (d · akseli)². Suunnattu lisävalo säilyttää
+  heijastusten muodon (tasainen lisä teki metallista muovisen näköisen). Se painotetaan pinnan
+  sisäänpäin osoittavuudella, joten titaaniset sivupinnat saavat pelkän studion. Samalla
+  studion tumma horisonttivyö ei enää piirry sisäpintaan terävänä varjona.
 - **Tumma studio:** Ouran kalibroitu studio himmennettynä. Horisontti ja takaosa ovat lähes
   mustia, ylä- ja etuvalot jäävät pehmeiksi liukuväreiksi, ja kaksi kapeaa reunavaloa
   takaviistossa piirtää muodon valojuovina. Sisätilan lisävalo on pieni, joten sensorien valo

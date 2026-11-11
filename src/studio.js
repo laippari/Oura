@@ -12,6 +12,8 @@ import { STUDIO_ENV } from './studioEnv.js';
 // Näkymä renderöidään kuutiokarttaan ja esisuodatetaan (PMREM) karheustasoille.
 // ---------------------------------------------------------------------------
 
+const POLE_BLUR_DEG = 3.5; // napojen lähellä tavoiteltu pehmeys pallon pinnalla
+
 // Kuutiollinen B-spline-ylösnäytteistys (sileä, ei ylitystä): atsimuutti jaksollinen, korkeus rajattu.
 function upsampleEnv(env, W, H) {
   const { width: w, height: h, data } = env;
@@ -31,6 +33,30 @@ function upsampleEnv(env, W, H) {
       const k = (j * W + i) * 4;
       out[k] = out[k + 1] = out[k + 2] = v;
       out[k + 3] = 1;
+    }
+  }
+  // Navat: lat-long-kartassa solun leveys kapenee napaa kohti, joten atsimuutin suuntainen
+  // pehmeys terävöityy ja navalle syntyy nipistynyt piste (näkyi heijastuksena ulkopinnan
+  // alaosassa). Rivit sumennetaan atsimuutissa niin, että pehmeys pallon pinnalla pysyy samana
+  // (σ ∝ tan(korkeus)); navalla rivi tasoittuu keskiarvoonsa. Rakenne navan ympärillä säilyy.
+  const sigma0 = (POLE_BLUR_DEG * Math.PI) / 180;
+  const row = new Float32Array(W);
+  for (let j = 0; j < H; j++) {
+    const c = Math.max(1e-4, Math.cos(((j + 0.5) / H - 0.5) * Math.PI));
+    const t = Math.min(1, Math.max(0, (0.5 - c) / 0.3));
+    const ramp = t * t * (3 - 2 * t); // 0 kun |korkeus| < 60°, 1 kun > 78°
+    const sig = ((sigma0 * Math.sqrt(1 / (c * c) - 1) * ramp) / (2 * Math.PI)) * W;
+    if (sig < 0.5) continue;
+    for (let i = 0; i < W; i++) row[i] = out[(j * W + i) * 4];
+    const rad = Math.min(W >> 1, Math.ceil(sig * 3));
+    const k = new Float32Array(rad * 2 + 1);
+    let ksum = 0;
+    for (let d = -rad; d <= rad; d++) ksum += k[d + rad] = Math.exp((-0.5 * d * d) / (sig * sig));
+    for (let i = 0; i < W; i++) {
+      let v = 0;
+      for (let d = -rad; d <= rad; d++) v += k[d + rad] * row[(i + d + W) % W];
+      const o = (j * W + i) * 4;
+      out[o] = out[o + 1] = out[o + 2] = v / ksum;
     }
   }
   const tex = new THREE.DataTexture(out, W, H, THREE.RGBAFormat, THREE.FloatType);

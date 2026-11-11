@@ -1,5 +1,4 @@
 import * as THREE from 'three/webgpu';
-import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { makeGeometry } from './parts.js';
 
@@ -234,39 +233,37 @@ function placeOnBore(group, obj, R, thetaC, u, v, h, ku = 1) {
   group.add(obj);
 }
 
-// Pyöristetty litteä levy (paksuus y-suunnassa), esim. LEDin emitterialueet
-function roundedSlab(w, d, h, r) {
-  const sh = new THREE.Shape();
-  const x0 = -w / 2, y0 = -d / 2;
-  sh.moveTo(x0 + r, y0);
-  sh.lineTo(x0 + w - r, y0);
-  sh.quadraticCurveTo(x0 + w, y0, x0 + w, y0 + r);
-  sh.lineTo(x0 + w, y0 + d - r);
-  sh.quadraticCurveTo(x0 + w, y0 + d, x0 + w - r, y0 + d);
-  sh.lineTo(x0 + r, y0 + d);
-  sh.quadraticCurveTo(x0, y0 + d, x0, y0 + d - r);
-  sh.lineTo(x0, y0 + r);
-  sh.quadraticCurveTo(x0, y0, x0 + r, y0);
+// Pyöristetyn suorakaiteen polku (keskipiste cx, cy)
+function rrPath(path, cx, cy, w, d, r) {
+  const x0 = cx - w / 2, y0 = cy - d / 2;
+  path.moveTo(x0 + r, y0);
+  path.lineTo(x0 + w - r, y0);
+  path.quadraticCurveTo(x0 + w, y0, x0 + w, y0 + r);
+  path.lineTo(x0 + w, y0 + d - r);
+  path.quadraticCurveTo(x0 + w, y0 + d, x0 + w - r, y0 + d);
+  path.lineTo(x0 + r, y0 + d);
+  path.quadraticCurveTo(x0, y0 + d, x0, y0 + d - r);
+  path.lineTo(x0, y0 + r);
+  path.quadraticCurveTo(x0, y0, x0 + r, y0);
+  return path;
+}
+
+// Pyöristetty litteä levy (paksuus y-suunnassa, keskitetty). holes: [{ x, z, w, d, r }] = läpi
+// menevät pyöristetyt aukot (LED-kotelon kupit).
+function roundedSlab(w, d, h, r, holes = []) {
+  const sh = rrPath(new THREE.Shape(), 0, 0, w, d, r);
+  // kierto vie muodon y-akselin −z:ksi, joten aukon z-paikka peilataan
+  for (const o of holes) sh.holes.push(rrPath(new THREE.Path(), o.x, -o.z, o.w, o.d, o.r));
   const g = new THREE.ExtrudeGeometry(sh, { depth: h, bevelEnabled: false, curveSegments: 10 });
   g.rotateX(-Math.PI / 2);
   g.translate(0, -h / 2, 0);
   return g;
 }
 
-function wire(points, radius, mat) {
+// Bondilanka: putki pisteiden kautta (palauttaa geometrian)
+function wire(points, radius) {
   const curve = new THREE.CatmullRomCurve3(points.map((p) => new THREE.Vector3(...p)));
-  return new THREE.Mesh(new THREE.TubeGeometry(curve, 24, radius, 6, false), mat);
-}
-
-// Ristin muotoinen yläelektrodi pienellä LED-sirulla (näkyy virallisissa kuvissa)
-function crossElectrode(size, mat) {
-  const g = new THREE.Group();
-  const t = size * 0.16;
-  g.add(new THREE.Mesh(new THREE.BoxGeometry(size, 0.008, t), mat));
-  g.add(new THREE.Mesh(new THREE.BoxGeometry(t, 0.008, size), mat));
-  const dot = new THREE.Mesh(new THREE.CylinderGeometry(size * 0.2, size * 0.2, 0.012, 16), mat);
-  g.add(dot);
-  return g;
+  return new THREE.TubeGeometry(curve, 24, radius, 6, false);
 }
 
 // Yhdistää ryhmän staattiset osat materiaaleittain (vähemmän piirtokutsuja mobiilissa).
@@ -288,104 +285,147 @@ export function mergeByMaterial(group) {
   return out;
 }
 
-// Tri-LED: valkoinen keraaminen alusta, vihreä emitteri (iso siru) sekä kapea punainen/IR-alue,
-// jossa kaksi pientä sirua ristielektrodeineen. dir = suunta kohti fotodiodia (u-akselilla).
-export function buildLEDInternals(R, thetaC, dir, mats, ku = 1) {
+// Sensorien sisäosat on mallinnettu oikean sormuksen makrokuvan ja Ouran lähirenderöinnin
+// mukaan. Paikallinen kehys ikkunan keskellä: x = kehän suunta, y = korkeus (kohti akselia),
+// z = akselin suunta. Mitat millimetreinä 3.1 × 3.2 mm:n ikkunalle.
+
+const box = (w, h, d) => new THREE.BoxGeometry(w, h, d);
+
+// Tri-LED: valkoinen kotelo, jossa kaksi upotettua heijastinkuppia. Isommassa kupissa vihreä
+// siru (InGaN, kellanvihreä, liitostyyny kulmassa), kapeammassa punainen (raidallinen
+// elektrodi) ja infrapunasiru (tumma) päällekkäin akselin suunnassa; kultaiset bondilangat.
+// dir = suunta kohti fotodiodia (x-akselilla): vihreä kuppi on fotodiodin puolella.
+export function buildLEDInternals(R, thetaC, dir, mats) {
   const group = new THREE.Group();
   group.name = 'tri-LED';
-  const top = 0.17;
+  const put = (geo, mat, x, y, z) => {
+    const m = new THREE.Mesh(geo, mat);
+    m.position.set(x, y, z);
+    placeOnBore(group, m, R, thetaC, 0, 0, 0);
+    return m;
+  };
+  const floor = 0.07; // kuppien pohjan korkeus
+  const rim = 0.2; // kotelon yläpinta
+  const gx = dir * 0.48; // vihreän kupin keskikohta
+  const rx = -dir * 0.72; // punaisen/IR-kupin keskikohta
+  const cupD = 1.72;
 
-  const sub = new THREE.Mesh(new RoundedBoxGeometry(2.8, 0.14, 2.42, 2, 0.04), mats.ledSubstrate);
-  sub.position.y = top - 0.07;
-  placeOnBore(group, sub, R, thetaC, 0, 0, 0, ku);
-
-  // vihreä emitterialue (läpikuultava silikoni) ja siru
-  const gz = new THREE.Mesh(roundedSlab(1.24, 1.62, 0.03, 0.2), mats.greenZone);
-  gz.position.set(dir * 0.42, top + 0.012, 0);
-  placeOnBore(group, gz, R, thetaC, 0, 0, 0, ku);
-  const gd = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.08, 0.6), mats.dieGreen);
-  gd.position.set(dir * 0.34, top + 0.07, 0.22);
-  placeOnBore(group, gd, R, thetaC, 0, 0, 0, ku);
-  const gpad = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.012, 20), mats.gold);
-  gpad.position.set(dir * 0.56, top + 0.116, -0.0);
-  placeOnBore(group, gpad, R, thetaC, 0, 0, 0, ku);
-  const gw = wire(
-    [
-      [dir * 0.56, top + 0.12, 0.0],
-      [dir * 0.62, top + 0.26, -0.3],
-      [dir * 0.7, top + 0.2, -0.55],
-      [dir * 0.78, top + 0.02, -0.7],
-    ],
-    0.006,
-    mats.gold
+  // kotelo: pohjalevy + kehys, jossa kuppien aukot
+  put(roundedSlab(2.8, 2.9, floor + 0.05, 0.5), mats.ledSubstrate, 0, (floor - 0.05) / 2, 0);
+  put(
+    roundedSlab(2.8, 2.9, rim - floor, 0.5, [
+      { x: gx, z: 0, w: 1.2, d: cupD, r: 0.2 },
+      { x: rx, z: 0, w: 0.6, d: cupD, r: 0.16 },
+    ]),
+    mats.ledSubstrate,
+    0,
+    (rim + floor) / 2,
+    0
   );
-  placeOnBore(group, gw, R, thetaC, 0, 0, 0, ku);
+  // kuppien sävytetty pohja (silikonitäyte)
+  put(roundedSlab(1.19, cupD - 0.01, 0.02, 0.2), mats.greenZone, gx, floor + 0.01, 0);
+  put(roundedSlab(0.59, cupD - 0.01, 0.02, 0.16), mats.redZone, rx, floor + 0.01, 0);
 
-  // punainen + IR -alue: kaksi pientä sirua ristielektrodeilla
-  const rz = new THREE.Mesh(roundedSlab(0.56, 1.48, 0.03, 0.14), mats.redZone);
-  rz.position.set(-dir * 0.66, top + 0.012, 0.02);
-  placeOnBore(group, rz, R, thetaC, 0, 0, 0, ku);
-  const dies = [mats.dieRed, mats.dieIR];
-  for (let i = 0; i < 2; i++) {
-    const vz = 0.12 + i * 0.36;
-    const d = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.07, 0.3), dies[i]);
-    d.position.set(-dir * 0.66, top + 0.06, vz);
-    placeOnBore(group, d, R, thetaC, 0, 0, 0, ku);
-    const x = crossElectrode(0.17, mats.aluminium);
-    x.position.set(-dir * 0.66, top + 0.1, vz);
-    placeOnBore(group, x, R, thetaC, 0, 0, 0, ku);
-    const w = wire(
+  // vihreä siru + kulmatyyny + lanka kupin reunan tyynylle
+  const gz = 0.12;
+  put(box(0.62, 0.09, 0.62), mats.dieGreen, gx - dir * 0.05, floor + 0.065, gz);
+  put(box(0.15, 0.012, 0.15), mats.gold, gx - dir * 0.05 + dir * 0.2, floor + 0.116, gz - 0.2);
+  put(box(0.2, 0.012, 0.16), mats.gold, gx + dir * 0.42, floor + 0.026, -0.62);
+  put(
+    wire(
       [
-        [-dir * 0.66, top + 0.105, vz],
-        [-dir * 0.8, top + 0.22, vz + 0.04],
-        [-dir * 0.98, top + 0.16, vz + 0.08],
-        [-dir * 1.1, top + 0.01, vz + 0.1],
+        [gx + dir * 0.15, floor + 0.12, gz - 0.2],
+        [gx + dir * 0.22, floor + 0.24, gz - 0.38],
+        [gx + dir * 0.34, floor + 0.2, gz - 0.58],
+        [gx + dir * 0.42, floor + 0.035, -0.62],
       ],
-      0.0055,
+      0.011,
       mats.gold
+    ),
+    mats.gold,
+    0,
+    0,
+    0
+  );
+
+  // punainen (ylempi) ja infrapunasiru (alempi): keskipiste-elektrodi, lanka kupin päätyyn
+  for (const [mat, vz, striped] of [[mats.dieRed, 0.33, true], [mats.dieIR, -0.33, false]]) {
+    put(box(0.3, 0.07, 0.3), mat, rx, floor + 0.055, vz);
+    if (striped) for (const o of [-0.09, 0, 0.09]) put(box(0.26, 0.006, 0.02), mats.dieStripe, rx, floor + 0.093, vz + o);
+    put(new THREE.CylinderGeometry(0.045, 0.045, 0.012, 14), mats.gold, rx, floor + 0.097, vz);
+    const end = Math.sign(vz) * 0.74;
+    put(box(0.2, 0.012, 0.12), mats.gold, rx, floor + 0.026, end);
+    put(
+      wire(
+        [
+          [rx, floor + 0.1, vz],
+          [rx + dir * 0.03, floor + 0.2, vz + (end - vz) * 0.35],
+          [rx + dir * 0.02, floor + 0.17, vz + (end - vz) * 0.75],
+          [rx, floor + 0.035, end],
+        ],
+        0.01,
+        mats.gold
+      ),
+      mats.gold,
+      0,
+      0,
+      0
     );
-    placeOnBore(group, w, R, thetaC, 0, 0, 0, ku);
   }
   return group;
 }
 
-// Fotodiodi: musta paketti, heijastuksenestopinnoitettu piisiru, hienot alumiinisormet,
-// kaksi bondipadia johtimineen.
-export function buildPDInternals(R, thetaC, dir, mats, ku = 1) {
+// Fotodiodi: musta kotelo linssin reunaan asti, neliömäinen piisiru (heijastuksenestopinnoite,
+// sinivihreä reuna, hienot sormet) siirrettynä kohti LEDiä, kaksi kultaista liitostyynyä
+// vastakkaisella reunalla ja bondilangat sirun kulmiin.
+// dir = suunta poispäin LEDistä (x-akselilla).
+export function buildPDInternals(R, thetaC, dir, mats) {
   const group = new THREE.Group();
   group.name = 'photodiode';
-  const top = 0.08;
-  const pkg = new THREE.Mesh(new RoundedBoxGeometry(3.0, 0.1, 2.5, 2, 0.035), mats.pdBody);
-  pkg.position.y = top - 0.05;
-  placeOnBore(group, pkg, R, thetaC, 0, 0, 0, ku);
-  const si = new THREE.Mesh(new THREE.BoxGeometry(2.72, 0.02, 2.22), mats.silicon);
-  si.position.y = top + 0.01;
-  placeOnBore(group, si, R, thetaC, 0, 0, 0, ku);
-  const n = 13;
-  for (let i = 0; i < n; i++) {
-    const f = new THREE.Mesh(new THREE.BoxGeometry(0.007, 0.004, 2.1), mats.pdFinger);
-    f.position.set(-1.2 + (2.4 * i) / (n - 1), top + 0.022, 0);
-    placeOnBore(group, f, R, thetaC, 0, 0, 0, ku);
-  }
-  const bus = new THREE.Mesh(new THREE.BoxGeometry(2.5, 0.006, 0.05), mats.aluminium);
-  bus.position.set(0, top + 0.022, -1.07);
-  placeOnBore(group, bus, R, thetaC, 0, 0, 0, ku);
-  for (const vz of [0.3, 0.72]) {
-    const x = crossElectrode(0.16, mats.aluminium);
-    x.position.set(dir * 0.95, top + 0.03, vz);
-    placeOnBore(group, x, R, thetaC, 0, 0, 0, ku);
-    const w = wire(
-      [
-        [dir * 0.95, top + 0.035, vz],
-        [dir * 1.1, top + 0.17, vz + 0.05],
-        [dir * 1.28, top + 0.12, vz + 0.1],
-        [dir * 1.42, top - 0.04, vz + 0.12],
-      ],
-      0.006,
-      mats.aluminium
+  const put = (geo, mat, x, y, z) => {
+    const m = new THREE.Mesh(geo, mat);
+    m.position.set(x, y, z);
+    placeOnBore(group, m, R, thetaC, 0, 0, 0);
+    return m;
+  };
+  const top = 0.05; // kotelon pohjan yläpinta
+  const dx = -dir * 0.22; // sirun keskikohta
+  const half = 0.88;
+
+  put(roundedSlab(2.86, 2.96, 0.11, 0.56), mats.pdBody, 0, top - 0.055, 0);
+  // siru: reunus (pinnoitteen sinivihreä reuna) + aktiivinen pinta
+  put(box(half * 2 + 0.09, 0.05, half * 2 + 0.09), mats.pdEdge, dx, top + 0.025, 0);
+  put(box(half * 2, 0.054, half * 2), mats.silicon, dx, top + 0.03, 0);
+  // hienot sormet akselin suuntaan + kokoojakisko
+  const n = 11;
+  for (let i = 0; i < n; i++) put(box(0.007, 0.004, half * 2 - 0.2), mats.pdFinger, dx - half + 0.16 + ((half * 2 - 0.32) * i) / (n - 1), top + 0.059, 0);
+  put(box(half * 2 - 0.24, 0.004, 0.03), mats.pdFinger, dx, top + 0.059, -half + 0.1);
+
+  // liitostyynyt alustalla ja sirun kulmissa, langat niiden välillä
+  const padX = dir * 1.12;
+  const dieEdge = dx + dir * (half - 0.11);
+  for (const vz of [0.56, -0.56]) {
+    put(box(0.3, 0.014, 0.24), mats.gold, padX, top + 0.007, vz);
+    put(box(0.13, 0.008, 0.13), mats.gold, dieEdge, top + 0.061, vz * 1.25);
+    put(
+      wire(
+        [
+          [padX - dir * 0.02, top + 0.016, vz],
+          [padX - dir * 0.12, top + 0.15, vz * 1.06],
+          [dieEdge + dir * 0.14, top + 0.17, vz * 1.2],
+          [dieEdge, top + 0.066, vz * 1.25],
+        ],
+        0.011,
+        mats.gold
+      ),
+      mats.gold,
+      0,
+      0,
+      0
     );
-    placeOnBore(group, w, R, thetaC, 0, 0, 0, ku);
   }
+  // kapea kultainen johdinliuska LEDin puoleisella reunalla
+  put(box(0.1, 0.012, 0.5), mats.gold, -dir * 1.24, top + 0.006, 0.72);
   return group;
 }
 

@@ -137,8 +137,7 @@ async function main() {
     );
     lens.renderOrder = 2;
     // dir = suunta kohti fotodiodia u-akselilla (LED) / poispäin keskilinjasta (PD)
-    const ku = L.halfLength / 1.9; // komponenttien mitat on annettu 3.8 mm:n ikkunalle
-    sensorsGroup.add(mergeByMaterial(isLED ? buildLEDInternals(Ri, w.thetaC, w.sgn, mats.internals, ku) : buildPDInternals(Ri, w.thetaC, w.sgn, mats.internals, ku)));
+    sensorsGroup.add(mergeByMaterial(isLED ? buildLEDInternals(Ri, w.thetaC, w.sgn, mats.internals) : buildPDInternals(Ri, w.thetaC, w.sgn, mats.internals)));
     // räjäytyskuvan osat: moduulin alusta ja tiiviste
     mesh(buildModuleBase({ R: Ri, thetaC: w.thetaC, hA: L.halfLength + 0.08, hB: L.halfWidth + 0.08, rc: L.corner + 0.08, h0: -0.42, h1: -0.085, Rf: profile.innerRadiusAt }), mats.parts.base, w.kind + '-base', basesGroup);
     mesh(buildGasket({ R: Ri, thetaC: w.thetaC, hA: pocketA - 0.01, hB: pocketB - 0.01, rc: pocketR, width: P.margin + 0.06, h0: -0.09, h1: 0.03, Rf: profile.innerRadiusAt }), mats.parts.gasket, w.kind + '-gasket', gasketsGroup);
@@ -350,9 +349,8 @@ async function main() {
     studio.set(on ? 'dark' : lightVariant);
     scene.backgroundNode.theme.value = on ? 1 : 0;
     ground.shadowOpacity.value = on ? 0.6 : 0.32;
-    if (on) mats.setInteriorLight(1.0, 0.04);
-    else mats.setInteriorLight(1.2, 0.25);
-    mats.sensor.spill.value = on ? 1 : 0.35;
+    if (on) mats.setInteriorLight(1.0, 0.015, 0.045);
+    else mats.setInteriorLight(1.2, 0.16, 0.36);
     document.body.dataset.theme = on ? 'dark' : 'light';
     document.querySelector('meta[name="theme-color"]').setAttribute('content', on ? '#0b0a0a' : '#d6d5d2');
     requestRender();
