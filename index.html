@@ -92,7 +92,7 @@
       box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06), inset 0 0 0 0.5px var(--hair);
       transition: transform 0.45s var(--ease), opacity 0.35s ease;
     }
-    #pill .dot { width: 22px; height: 22px; border-radius: 50%; background: radial-gradient(circle at 32% 28%, var(--sw-a) 0%, var(--sw-b) 78%) center / cover; }
+    #pill .dot { width: 26px; height: 21px; border-radius: 50%; background: radial-gradient(ellipse at 40% 30%, var(--sw-a) 0%, var(--sw-b) 80%) center / 100% 100% no-repeat; }
     #pill .name { font-size: 11.5px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; }
     #pill svg { width: 14px; height: 14px; opacity: 0.55; }
     body.sheet-open #pill, body.seq #pill { opacity: 0; transform: translateY(14px); pointer-events: none; }
@@ -130,13 +130,13 @@
     .label { font-size: 10.5px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); }
     .value { font-size: 12px; font-weight: 500; letter-spacing: 0.02em; }
 
-    /* finish swatches: spheres rendered with the real frame material (see main.js) */
-    #finishes { display: flex; justify-content: center; gap: 13px; margin: 0 0 14px; }
+    /* finish swatches: pebbles rendered with the real frame material (see main.js) */
+    #finishes { display: flex; justify-content: center; gap: 9px; margin: 0 0 14px; }
     #finishes button {
-      width: 40px; height: 40px; padding: 0; border: 0; border-radius: 50%; cursor: pointer; flex: none;
-      background: radial-gradient(circle at 32% 28%, var(--sw-a) 0%, var(--sw-b) 78%) center / cover;
-      box-shadow: 0 3px 8px rgba(0, 0, 0, 0.28);
-      outline: 1.5px solid transparent; outline-offset: 3px;
+      width: 46px; height: 37.5px; padding: 0; border: 0; border-radius: 50%; cursor: pointer; flex: none;
+      background: radial-gradient(ellipse at 40% 30%, var(--sw-a) 0%, var(--sw-b) 80%) center / 100% 100% no-repeat;
+      filter: drop-shadow(0 3px 4px rgba(0, 0, 0, 0.32));
+      outline: 1.5px solid transparent; outline-offset: 2px;
       transform: scale(0.72);
       transition: transform 0.25s var(--ease), outline-color 0.25s ease;
     }
@@ -148,6 +148,7 @@
     body.sheet-open #finishes button:active { transform: scale(0.9); transition-delay: 0s; transition-duration: 0.15s; }
 
     .tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 14px; }
+    .head { margin-bottom: 9px; }
     .tile {
       display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px;
       height: 54px; padding: 0 8px; border: 0; border-radius: 16px; cursor: pointer;
@@ -206,8 +207,8 @@
     body.match #dock, body.match #sheet { display: none; }
     @media (max-width: 370px) {
       #sheet { padding-left: 12px; padding-right: 12px; }
-      #finishes { gap: 9px; }
-      #finishes button { width: 36px; height: 36px; }
+      #finishes { gap: 6px; }
+      #finishes button { width: 41px; height: 33.5px; }
       .views { gap: 6px; }
       .views button { flex-basis: 58px; }
     }
@@ -246,7 +247,8 @@
     <div class="grab" aria-hidden="true" style="--row:0"></div>
     <div class="head" style="--row:0"><span class="label">Finish</span><span class="value" id="finish-name"></span></div>
     <div id="finishes" role="group" aria-label="Finish" style="--row:1"></div>
-    <div class="tiles" style="--row:2">
+    <div class="head" style="--row:2"><span class="label">Display</span></div>
+    <div class="tiles" style="--row:3">
       <button class="tile" id="tg-explode" type="button" aria-pressed="false">
         <svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="5.5" rx="7" ry="2"/><ellipse cx="12" cy="12" rx="7" ry="2"/><ellipse cx="12" cy="18.5" rx="7" ry="2"/></svg>
         <span>Explode</span>
@@ -260,12 +262,12 @@
         <span>Dark</span>
       </button>
     </div>
-    <div class="head" style="--row:3"><span class="label">Views</span></div>
-    <div class="views" id="views" style="--row:4">
+    <div class="head" style="--row:4"><span class="label">Views</span></div>
+    <div class="views" id="views" style="--row:5">
       <button type="button" data-seq="hero"><i class="ico"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="12.5" rx="8" ry="4.2"/><path d="M8.2 5.2A9 9 0 0 1 18 7.3"/><path d="M18 4.6v2.7h-2.7"/></svg></i><span>Showcase</span></button>
+      <button type="button" data-seq="pulse"><i class="ico"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="1.7" fill="currentColor" stroke="none"/><path d="M8.2 8.2a5.4 5.4 0 0 0 0 7.6M15.8 8.2a5.4 5.4 0 0 1 0 7.6"/><path d="M5.3 5.3a9.5 9.5 0 0 0 0 13.4M18.7 5.3a9.5 9.5 0 0 1 0 13.4"/></svg></i><span>Pulse</span></button>
       <button type="button" data-seq="sensor"><i class="ico"><svg viewBox="0 0 24 24"><rect x="6.5" y="6.5" width="11" height="11" rx="3"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/></svg></i><span>Sensor</span></button>
       <button type="button" data-seq="profile"><i class="ico"><svg viewBox="0 0 24 24"><path d="M4 12c0-3.2 1.2-4 8-4s8 .8 8 4-1.2 4-8 4-8-.8-8-4z"/></svg></i><span>Profile</span></button>
-      <button type="button" data-seq="exploded"><i class="ico"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="4.5" rx="6" ry="1.6"/><ellipse cx="12" cy="9.5" rx="6" ry="1.6"/><ellipse cx="12" cy="14.5" rx="6" ry="1.6"/><ellipse cx="12" cy="19.5" rx="6" ry="1.6"/></svg></i><span>Exploded</span></button>
     </div>
   </section>
 

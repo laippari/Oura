@@ -20,10 +20,30 @@ const ORIGIN = new THREE.Vector3();
 
 export const SEQUENCES = [
   { id: 'hero', name: 'Showcase' },
+  { id: 'pulse', name: 'Pulse' },
   { id: 'sensor', name: 'Sensor' },
   { id: 'profile', name: 'Profile' },
-  { id: 'exploded', name: 'Exploded' },
 ];
+
+// Pulse timeline (seconds). The second showcase, built around the sensors:
+//   copper ring on dark, sensor lights pulsing from the start to the very end → glide inside
+//   to the LED, which stays in view for a while, then drift to the photodiode → the camera
+//   swings out and settles low behind the opposite side of the band, looking across its rim
+//   at the glowing sensors → the band rises like a planet's horizon until it covers the frame
+//   (an eclipse) → the ring is revealed on the light background as Brushed Silver in a slow
+//   hero turn → back to dark and copper, looping without a seam.
+export const PULSE = {
+  duration: 24,
+  lightsOn: 0.6,
+  sensorIn: [2.4, 4.0], // glide hero → sensors
+  drift: [7.2, 9.0], // LED held until here, then drift toward the photodiode
+  planetIn: [9.0, 11.8], // swing out behind the far side of the band
+  eclipse: [12.4, 14.4], // the band rises over the sensors and fills the frame
+  light: [14.0, 21.0], // light background + Brushed Silver (starts under the eclipse)
+  heroIn: [14.5, 17.2], // pull out into the hero move
+  finishDark: 'deep-rose',
+  finishLight: 'brushed-silver',
+};
 
 // Showcase timeline (seconds). One continuous move, no cuts:
 //   hero on the dark background → glide into the sensors (unlit, then lit) → glide out to the
@@ -87,8 +107,6 @@ export class Director {
     const { ctx } = this;
     this.seq = id;
     this.t = 0;
-    if (id === 'exploded') ctx.setExplode(true);
-    else if (id !== 'hero') ctx.setExplode(false);
     this.blend = { from: this._snapshot(ctx.standardTarget()), k: 0, dur: 1.6, toSeq: true, q0: ctx.ring.quaternion.clone(), p0: ctx.ring.position.clone() };
   }
 
@@ -207,13 +225,58 @@ export class Director {
 
   _evaluate(id, t) {
     if (id === 'hero') return this._showcase(t);
+    if (id === 'pulse') return this._pulse(t);
     if (id === 'sensor') {
       // endless: drift between LED and photodiode; lights off first, then on for a few seconds
       const u = 0.5 - 0.5 * Math.cos((t * TAU) / 22);
-      return { ...this._sensor(u, t), state: { sensors: t % 7.5 > 3 } };
+      return { ...this._sensor(u, t), state: { sensors: t % 7.5 > 3, explode: false } };
     }
-    if (id === 'profile') return this._profile(t);
-    return this._exploded(t);
+    return { ...this._profile(t), state: { explode: false } };
+  }
+
+  // "Planet" shot. The camera sits outside the ring, behind the side opposite the sensors and
+  // just above the rim, so the line of sight to the sensors grazes the near band: its outer
+  // surface fills the lower frame like a horizon, the lit sensors hang beyond it across the
+  // hole. `rise` (0..1) lowers and closes in the camera until the band covers the frame.
+  _planet(tau, rise) {
+    const { ctx } = this;
+    const { Ri, Ro, ledTheta, pdTheta } = ctx.ringInfo;
+    const ringQuat = ctx.heroQuat.clone();
+    const local = (r, a, z) => new THREE.Vector3(r * Math.sin(a), -r * Math.cos(a), z).applyQuaternion(ringQuat);
+    const thS = (ledTheta + pdTheta) / 2; // the sensor pair in view
+    const sway = 0.05 * Math.sin((tau * TAU) / 9);
+    const thC = thS + Math.PI + 0.16 + sway; // behind the opposite side, slightly off the diameter
+    const out = 10.5 - 4.5 * rise; // distance outside the band
+    const z = 4.9 - 4.3 * rise; // height above the ring plane (the rim is at ±A)
+    return { ringQuat, cam: pose(local(Ro + out, thC, z), local(Ri - 0.4, thS, 0.2), ctx.fov, 0.3) };
+  }
+
+  _pulse(t) {
+    const P = PULSE;
+    const tau = t % P.duration;
+    const glide = (from, to, range) => mixShots(from, to, easeInOut((tau - range[0]) / (range[1] - range[0])));
+    const rise = easeInOut(Math.min(1, Math.max(0, (tau - P.eclipse[0]) / (P.eclipse[1] - P.eclipse[0]))));
+    let shot;
+    if (tau < P.sensorIn[0]) {
+      shot = this._hero(tau);
+    } else if (tau < P.planetIn[0]) {
+      // the LED (pulse sensor) is held in view, then the camera drifts to the photodiode
+      shot = this._sensor(0.08 + 0.67 * smooth(P.drift[0], P.drift[1], tau), tau);
+      if (tau < P.sensorIn[1]) shot = glide(this._hero(tau), shot, P.sensorIn);
+    } else if (tau < P.heroIn[0]) {
+      shot = this._planet(tau, rise);
+      if (tau < P.planetIn[1]) shot = glide(this._sensor(0.75, tau), shot, P.planetIn);
+    } else {
+      // slow hero turn; runs straight on into the next loop
+      shot = this._hero(tau - P.duration);
+      if (tau < P.heroIn[1]) shot = glide(this._planet(tau, 1), shot, P.heroIn);
+    }
+    const light = tau >= P.light[0] && tau < P.light[1];
+    return {
+      ...shot,
+      progress: tau / P.duration,
+      state: { sensors: tau >= P.lightsOn, explode: false, dark: !light, finish: light ? P.finishLight : P.finishDark },
+    };
   }
 
   _showcase(t) {

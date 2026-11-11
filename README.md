@@ -30,11 +30,11 @@ Käyttöliittymä on englanniksi:
 
 | Kohta | Toiminto |
 | --- | --- |
-| Finish | Silver · Black · Stealth · Brushed Silver · Gold · Deep Rose (toimii myös räjäytettynä). Pallot renderöidään sormuksen oikealla kehysmateriaalilla samassa valaistuksessa. |
-| Explode | sormus aukeaa räjäytyskuvaksi ja kokoutuu takaisin; räjäytettyä pinoa voi pyöritellä |
-| Sensors | LEDit päälle: vihreä sekä punainen + infrapuna vuorottelevat |
-| Dark | vaalea ↔ tumma; valaistus, tausta ja varjo liukuvat yhtä aikaa saumattomasti |
-| Views | Showcase · Sensor · Profile · Exploded – kamera-ajot; kosketus lopettaa ja palauttaa omat asetukset |
+| Finish | Silver · Black · Stealth · Brushed Silver · Gold · Deep Rose (toimii myös räjäytettynä). Näytteet ovat "kiviä": sormuksen poikkileikkausprofiili pyöräytettynä, renderöitynä oikealla kehysmateriaalilla samassa valaistuksessa. Värin vaihto liukuu pehmeästi. |
+| Display → Explode | sormus aukeaa räjäytyskuvaksi ja kokoutuu takaisin; räjäytettyä pinoa voi pyöritellä |
+| Display → Sensors | LEDit päälle: vihreä sekä punainen + infrapuna vuorottelevat |
+| Display → Dark | vaalea ↔ tumma; valaistus, tausta ja varjo liukuvat yhtä aikaa saumattomasti |
+| Views | Showcase · Pulse · Sensor · Profile – kamera-ajot; kosketus lopettaa ja palauttaa omat asetukset |
 
 ## Mitä mallissa on
 
@@ -241,10 +241,15 @@ mitat (kokoluokka kuvista) ja saumojen syvyydet. Oura ei julkaise CAD-malleja.
     → liuku reunaprofiiliin tilan vaaletessa → sormus purkautuu räjäytyskuvaksi ja kokoutuu
     → liuku takaisin tuotekuvaan tilan tummuessa; jatkuu saumatta uuteen kierrokseen. Koko
     ajo on yksi jatkuva kameraliike ilman leikkauksia.
+  - *Pulse:* 24 sekunnin silmukka sensorien ympärille. Kuparinvärinen (Deep Rose) sormus
+    tummalla, sensorien pulssi päällä alusta loppuun → liuku LEDiin, joka pysyy kuvassa pitkään,
+    ja siitä fotodiodiin → kamera kiertää renkaan vastakkaisen laidan taakse ja katsoo sen reunan
+    yli hehkuviin sensoreihin (runko täyttää alakuvan kuin planeetan horisontti) → runko nousee
+    ja peittää koko kuvan → sen takaa paljastuu vaalea tausta ja Brushed Silver hitaassa
+    tuotekuvassa → takaisin tummaan ja kupariin. Näkymä voi vaihtaa väriä tilapäisesti.
   - *Sensor:* lähikuva sensoriparista (LED ja fotodiodi); kohde liukuu hitaasti niiden välillä,
     valot ovat ensin pois ja syttyvät sitten muutamaksi sekunniksi.
   - *Profile:* pystyssä oleva rengas kolmen neljäsosan kulmasta, soikea profiili ja saumat.
-  - *Exploded:* räjäytetty pino pyörii oman akselinsa ympäri.
 
   Näkymä voi tilapäisesti ohjata valoja, räjäytystä ja studiota; kosketus lopettaa näkymän ja
   palauttaa käyttäjän omat asetukset. Siirtymät ajoon ja takaisin ovat pehmeitä (kamera kiertää
@@ -268,7 +273,7 @@ mitat (kokoluokka kuvista) ja saumojen syvyydet. Oura ei julkaise CAD-malleja.
 | `?match=axial` | akselin suuntaisen sivukuvan kamera |
 | `?studio=soft` tai `#soft` | aiempi pehmeä studio pohjakarttana |
 | `?explode` | räjäytyskuva alusta alkaen |
-| `?seq=hero\|sensor\|profile\|exploded` | käynnistä näkymä (`hero` = Showcase; `&seqt=` aika sekunteina) |
+| `?seq=hero\|pulse\|sensor\|profile` | käynnistä näkymä (`hero` = Showcase; `&seqt=` aika sekunteina) |
 | `?match&crop=x,y,w,h` | vertailunäkymän rajaus lähikuviin (1000 px asteikko) |
 | `?nohq` | ei SSAA:ta |
 | `?offscreen` | testitila: ei esitystä kanvaasille, kuvat luetaan `__capture()`:lla |

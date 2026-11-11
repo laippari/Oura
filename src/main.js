@@ -439,10 +439,33 @@ async function main() {
   });
 
   // --- Viimeistely (viralliset värit) -----------------------------------------
+  // `finishIndex` is the user's choice. What is shown (`finishNow`) eases toward the wanted
+  // finish — the user's, or the one a running view asks for — so every change of colour,
+  // gloss and texture is a soft transition instead of a jump.
   let finishIndex = Math.max(0, FINISHES.findIndex((f) => f.id === (params.get('finish') || (matchMode ? 'silver' : 'deep-rose'))));
+  const finishParams = (f) => ({ f0: [...f.f0], roughness: f.roughness, aniso: f.aniso, brushed: f.brushed, bead: f.bead || 0 });
+  const finishNow = finishParams(FINISHES[finishIndex]);
+  const pushFinish = () => mats.setFinish(finishNow);
+  // returns true while still changing
+  const easeFinish = (target, k) => {
+    const t = finishParams(target);
+    let rest = 0;
+    for (let c = 0; c < 3; c++) {
+      rest += Math.abs(t.f0[c] - finishNow.f0[c]);
+      finishNow.f0[c] += (t.f0[c] - finishNow.f0[c]) * k;
+    }
+    for (const key of ['roughness', 'aniso', 'brushed', 'bead']) {
+      rest += Math.abs(t[key] - finishNow[key]);
+      finishNow[key] += (t[key] - finishNow[key]) * k;
+    }
+    pushFinish();
+    return rest > 5e-4;
+  };
+  let finishSettled = false;
+  let viewFinish = null; // finish requested by the running view (null = the user's)
   function applyFinish(i) {
     finishIndex = i;
-    mats.setFinish(FINISHES[i]);
+    finishSettled = false;
     ui.setFinish(i);
     requestRender();
   }
@@ -544,6 +567,19 @@ async function main() {
     if (exploder.on !== wantExplode) exploder.set(wantExplode);
     const wantDark = st.dark ?? user.dark;
     if (wantDark !== dark) applyTheme(wantDark);
+    const wantFinish = st.finish ? FINISHES.find((f) => f.id === st.finish) : null;
+    if (wantFinish !== viewFinish) {
+      viewFinish = wantFinish;
+      finishSettled = false;
+    }
+    if (!finishSettled) {
+      const changing = easeFinish(viewFinish || FINISHES[finishIndex], 1 - Math.exp(-dt / 0.3));
+      if (!changing) {
+        easeFinish(viewFinish || FINISHES[finishIndex], 1);
+        finishSettled = true;
+      }
+      moving = true;
+    }
 
     const bg = background.theme.value;
     if (Math.abs(bg - bgTarget) > 0.002) {
@@ -620,6 +656,7 @@ async function main() {
   });
 
   applyFinish(finishIndex);
+  pushFinish();
   new ResizeObserver(resize).observe(container);
   resize();
 
@@ -665,32 +702,45 @@ async function main() {
     const padded = Math.ceil((w * 4) / 256) * 256;
     return px.length >= padded * (h - 1) + w * 4 && padded !== w * 4 ? padded : w * 4;
   };
-  // Finish swatches in the panel: one small sphere per finish, rendered with the ring's real
-  // frame material under the same studio, so the swatches show the true colour and gloss.
-  // They are read back and handed to the UI as images.
+  // Finish swatches in the panel: one small "pebble" per finish, rendered with the ring's real
+  // frame material under the same lighting. The pebble is the ring's own cross-section profile
+  // (same superellipse exponents) revolved about its short axis and seen from above: a broad,
+  // nearly flat top that catches the key light and a tightening rim that sweeps through the
+  // horizon and the rim lights, so each finish shows its colour and its gloss.
+  // The images keep their alpha (the swatch has its own outline) and go to the UI as data URLs.
+  const SWATCH = { w: 184, h: 150, halfW: 1.05, radius: 1, height: 0.58, elevDeg: 40 };
   const renderSwatches = async () => {
-    const N = 168;
-    const geo = new THREE.SphereGeometry(1, 96, 64);
+    const { p, q } = RING.crossSection;
+    const pts = [];
+    const nProf = 120;
+    for (let i = 0; i <= nProf; i++) {
+      const t = -Math.PI / 2 + (i / nProf) * Math.PI;
+      const cs = Math.cos(t);
+      const sn = Math.sin(t);
+      pts.push(new THREE.Vector2(SWATCH.radius * Math.pow(Math.max(0, cs), 2 / p), SWATCH.height * Math.sign(sn) * Math.pow(Math.abs(sn), 2 / q)));
+    }
+    const geo = new THREE.LatheGeometry(pts, 128);
     geo.computeTangents();
     const count = geo.attributes.position.count;
     geo.setAttribute('cavity', new THREE.BufferAttribute(new Float32Array(count).fill(1), 1));
     geo.setAttribute('mark', new THREE.BufferAttribute(new Float32Array(count), 1));
     geo.setAttribute('gap', new THREE.BufferAttribute(new Float32Array(count), 1));
-    const ball = new THREE.Mesh(geo, mats.outerPatch);
-    ball.rotation.y = -Math.PI / 2; // uv seam to the back
-    const ballScene = new THREE.Scene();
-    ballScene.environment = envTexture;
-    ballScene.environmentRotation.copy(scene.environmentRotation);
-    ballScene.backgroundNode = vec3(0.02);
-    ballScene.add(ball);
-    // the sphere slightly overfills the square; the round button clips it to a clean edge
-    const ballCam = new THREE.OrthographicCamera(-0.97, 0.97, 0.97, -0.97, 0.1, 20);
-    ballCam.position.copy(camDir).multiplyScalar(6);
-    ballCam.lookAt(0, 0, 0);
+    const pebble = new THREE.Mesh(geo, mats.outerPatch);
+    const swatchScene = new THREE.Scene();
+    swatchScene.environment = envTexture;
+    swatchScene.environmentRotation.copy(scene.environmentRotation);
+    swatchScene.add(pebble);
+    const halfH = (SWATCH.halfW * SWATCH.h) / SWATCH.w;
+    const cam = new THREE.OrthographicCamera(-SWATCH.halfW, SWATCH.halfW, halfH, -halfH, 0.1, 20);
+    const e = deg(SWATCH.elevDeg);
+    cam.position.set(0, Math.sin(e) * 6, Math.cos(e) * 6);
+    cam.lookAt(0, 0, 0);
     const pipeline = new THREE.RenderPipeline(renderer);
     pipeline.outputColorTransform = false;
-    pipeline.outputNode = renderOutput(pass(ballScene, ballCam, { samples: 4 }).getTextureNode('output'));
-    const targets = FINISHES.map(() => new THREE.RenderTarget(N, N, { depthBuffer: false }));
+    pipeline.outputNode = renderOutput(pass(swatchScene, cam, { samples: 4 }).getTextureNode('output'));
+    const { w, h } = SWATCH;
+    const targets = FINISHES.map(() => new THREE.RenderTarget(w, h, { depthBuffer: false }));
+    renderer.setClearColor(0x000000, 0); // transparent around the pebble (the main view has its own background)
     // One swatch per animation frame: a scene pass is rendered only once per frame, so
     // back-to-back renders would all reuse the first image. The ring's own finish is restored
     // right after each render, before the next frame of the main view is drawn.
@@ -700,23 +750,33 @@ async function main() {
       renderer.setRenderTarget(targets[i]);
       pipeline.render();
       renderer.setRenderTarget(null);
-      mats.setFinish(FINISHES[finishIndex]);
+      pushFinish();
     }
 
     const flip = !renderer.backend.isWebGPUBackend;
     const urls = [];
     for (const rt of targets) {
-      const px = await renderer.readRenderTargetPixelsAsync(rt, 0, 0, N, N);
-      const stride = rowStride(px, N, N);
+      const px = await renderer.readRenderTargetPixelsAsync(rt, 0, 0, w, h);
+      const stride = rowStride(px, w, h);
       const c = document.createElement('canvas');
-      c.width = c.height = N;
+      c.width = w;
+      c.height = h;
       const ctx2 = c.getContext('2d');
-      const img = ctx2.createImageData(N, N);
-      for (let y = 0; y < N; y++) {
-        const src = (flip ? N - 1 - y : y) * stride;
-        img.data.set(px.subarray(src, src + N * 4), y * N * 4);
+      const img = ctx2.createImageData(w, h);
+      for (let y = 0; y < h; y++) {
+        const src = (flip ? h - 1 - y : y) * stride;
+        img.data.set(px.subarray(src, src + w * 4), y * w * 4);
       }
-      for (let i = 3; i < img.data.length; i += 4) img.data[i] = 255;
+      // edge pixels come out premultiplied by coverage; canvas wants straight alpha
+      const d = img.data;
+      for (let i = 0; i < d.length; i += 4) {
+        const al = d[i + 3];
+        if (al > 0 && al < 255) {
+          d[i] = Math.min(255, (d[i] * 255) / al);
+          d[i + 1] = Math.min(255, (d[i + 1] * 255) / al);
+          d[i + 2] = Math.min(255, (d[i + 2] * 255) / al);
+        }
+      }
       ctx2.putImageData(img, 0, 0);
       urls.push(c.toDataURL('image/png'));
       rt.dispose();
@@ -835,6 +895,7 @@ async function main() {
     ui,
     advance,
     user,
+    finishNow,
     setExplode,
     setSensors,
     setDark,
