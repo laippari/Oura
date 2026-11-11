@@ -252,15 +252,16 @@ mitat (kokoluokka kuvista) ja saumojen syvyydet. Oura ei julkaise CAD-malleja.
 
 | Parametri | Toiminto |
 | --- | --- |
-| `?finish=gold` | alkuväri |
+| `?finish=gold` | alkuväri (oletus: Deep Rose) |
+| `?light` tai `#light` | vaalea studio (oletus: tumma) |
+| `?sensors=0` | sensorien valot pois alussa (oletus: päällä) |
 | `?webgl` | pakota WebGL 2 |
 | `?still` | ei automaattista pyörintää |
-| `?match` | virallisen tuotekuvan kamera ja valkoinen tausta (validointi) |
+| `?match` | virallisen tuotekuvan kamera ja valkoinen tausta (validointi; aina vaalea, Silver, valot pois) |
 | `?match&mask` | sama siluettina ääriviivavertailua varten |
 | `?match=axial` | akselin suuntaisen sivukuvan kamera |
 | `?studio=soft` tai `#soft` | aiempi pehmeä studio (oletus: Ouran rekonstruoitu studio) |
-| `?dark` tai `#dark` | tumma studio |
-| `?explode` · `?sensors` | räjäytyskuva · sensorien valot päällä alusta alkaen |
+| `?explode` | räjäytyskuva alusta alkaen |
 | `?seq=hero\|sensor\|through\|profile\|exploded` | käynnistä näkymä (`&seqt=` aika sekunteina) |
 | `?match&crop=x,y,w,h` | vertailunäkymän rajaus lähikuviin (1000 px asteikko) |
 | `?nohq` | ei SSAA:ta |

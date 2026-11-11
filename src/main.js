@@ -41,16 +41,21 @@ async function main() {
 
   // --- Näkymä ---------------------------------------------------------------
   const scene = new THREE.Scene();
-  scene.backgroundNode = createBackgroundNode();
+  const background = createBackgroundNode(); // pysyvä viittaus (siluettitila vaihtaa näkymän taustan)
+  scene.backgroundNode = background;
   // Vaalea studio: Ouran rekonstruoitu studio (oletus) tai #soft = aiempi pehmeä studio.
   // Tumma studio valitaan paneelista (tai ?dark / #dark).
   const lightVariant = params.get('studio') === 'soft' || location.hash === '#soft' ? 'soft' : 'oura';
   addEventListener('hashchange', () => location.reload());
-  const studio = createStudio(renderer, params.has('lowenv') ? 256 : 512, lightVariant);
+  const matchMode = params.has('match');
+  // Oletukset: tumma studio, Deep Rose ja sensorien valot päällä. ?light / #light (tai #soft)
+  // avaa vaaleassa studiossa, ?finish=… valitsee värin ja ?sensors=0 sammuttaa valot.
+  // Vertailutila (?match) on aina vaalea, Silver ja valot pois.
+  const startDark = !matchMode && !params.has('light') && location.hash !== '#light' && lightVariant !== 'soft';
+  const studio = createStudio(renderer, params.has('lowenv') ? 256 : 512, startDark ? 'dark' : lightVariant);
   const envTexture = studio.texture;
   scene.environment = envTexture;
 
-  const matchMode = params.has('match');
   if (matchMode) document.body.classList.add('match');
   // ?match = 43° tuotekuva (lineItem), ?match=axial = akselin suuntainen sivukuva (hero side view)
   const matchAxial = params.get('match') === 'axial';
@@ -182,7 +187,7 @@ async function main() {
   scene.add(ground.group);
   if (matchMode) {
     ground.group.visible = false;
-    scene.backgroundNode.plain.value = 1;
+    background.plain.value = 1;
   }
 
   // --- Kamera ----------------------------------------------------------------
@@ -255,7 +260,7 @@ async function main() {
   // --- Jälkikäsittely ---------------------------------------------------------
   const vignetteAmount = uniform(matchMode ? 0 : 1);
   const veil = uniform(0); // kamera-ajon sauma: kuva häivytetään täsmälleen taustaan
-  const bgNode = scene.backgroundNode;
+  const bgNode = background;
   const finish = (colorNode) => {
     const glow = bloom(colorNode, 0.1, 0.35, 1.2);
     const d = length(screenUV.sub(vec2(0.5)).mul(vec2(1.0, 1.15)));
@@ -344,10 +349,10 @@ async function main() {
   };
 
   let dark = false;
-  const applyTheme = (on) => {
+  const applyTheme = (on, renderEnv = true) => {
     dark = on;
-    studio.set(on ? 'dark' : lightVariant);
-    scene.backgroundNode.theme.value = on ? 1 : 0;
+    if (renderEnv) studio.set(on ? 'dark' : lightVariant);
+    background.theme.value = on ? 1 : 0;
     ground.shadowOpacity.value = on ? 0.6 : 0.32;
     if (on) mats.setInteriorLight(1.0, 0.015, 0.045);
     else mats.setInteriorLight(1.2, 0.16, 0.36);
@@ -413,7 +418,7 @@ async function main() {
   });
 
   // --- Viimeistely (viralliset värit) -----------------------------------------
-  let finishIndex = Math.max(0, FINISHES.findIndex((f) => f.id === (params.get('finish') || 'silver')));
+  let finishIndex = Math.max(0, FINISHES.findIndex((f) => f.id === (params.get('finish') || (matchMode ? 'silver' : 'deep-rose'))));
   function applyFinish(i) {
     finishIndex = i;
     mats.setFinish(FINISHES[i]);
@@ -586,10 +591,12 @@ async function main() {
     const [x, y, z] = params.get('pan').split(',').map(Number);
     view.pan.set(x, y, z);
   }
-  if (params.has('dark') || location.hash === '#dark') setDark(true, true);
-  if (params.has('sensors')) {
+  // alkutila (ympäristö on jo renderöity oikealla studiolla)
+  ui.setDark(startDark);
+  applyTheme(startDark, false);
+  if (!matchMode && params.get('sensors') !== '0') {
     setSensors(true);
-    sensors.level = 1;
+    if (params.has('sensors')) sensors.level = 1; // testit: täysi kirkkaus heti
   }
   if (params.has('explode')) {
     setExplode(true, { fromSequence: true });
