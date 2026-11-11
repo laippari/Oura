@@ -25,15 +25,16 @@ Actions). Sivu on staattinen, joten käännösvaihetta ei ole; julkaisuun menev�
 | kaksoisnapautus | paluu alkunäkymään |
 | alareunan pilleri | avaa paneelin (sulkeutuu vetämällä alas, napauttamalla mallia tai Esc) |
 
-**Paneeli** (Ouran tyylinen, lämmin luonnonvalkoinen; tummassa studiossa tumma):
+**Paneeli** (Ouran tyylinen, lämmin luonnonvalkoinen; tummassa studiossa tumma). Käyttöliittymä
+on englanniksi:
 
 | Kohta | Toiminto |
 | --- | --- |
-| Väri | Silver · Black · Stealth · Brushed Silver · Gold · Deep Rose (toimii myös räjäytettynä) |
-| Räjäytys | sormus aukeaa räjäytyskuvaksi ja kokoutuu takaisin; räjäytettyä pinoa voi pyöritellä |
-| Sensorit | LEDit päälle: syke (vihreä) ja veren happi (punainen + infrapuna) vuorottelevat |
-| Tumma | vaalea ↔ tumma studio, valaistus ja käyttöliittymä vaihtuvat yhdessä |
-| Näkymät | Esittely · Sensori · Läpi · Profiili · Räjäytys – jatkuvat kamera-ajot; kosketus lopettaa |
+| Finish | Silver · Black · Stealth · Brushed Silver · Gold · Deep Rose (toimii myös räjäytettynä) |
+| Explode | sormus aukeaa räjäytyskuvaksi ja kokoutuu takaisin; räjäytettyä pinoa voi pyöritellä |
+| Sensors | LEDit päälle: vihreä sekä punainen + infrapuna vuorottelevat |
+| Dark | vaalea ↔ tumma studio, valaistus ja käyttöliittymä vaihtuvat yhdessä |
+| Views | Showcase · Sensor · Profile · Exploded – kamera-ajot; kosketus lopettaa ja palauttaa omat asetukset |
 
 ## Mitä mallissa on
 
@@ -231,17 +232,21 @@ mitat (kokoluokka kuvista) ja saumojen syvyydet. Oura ei julkaise CAD-malleja.
   mustia, ylä- ja etuvalot jäävät pehmeiksi liukuväreiksi, ja kaksi kapeaa reunavaloa
   takaviistossa piirtää muodon valojuovina. Sisätilan lisävalo on pieni, joten sensorien valo
   erottuu. Vaihto renderöi ympäristön uudelleen samaan PMREM-kohteeseen, joten materiaaleja ei
-  käännetä uudelleen. Vaihdon peittää lyhyt pehmeä verho.
-- **Näkymät** (`src/sequences.js`), kaikki jatkuvia silmukoita:
-  - *Esittely:* hidas pyörintä, kallistus ja etäisyys hengittävät.
-  - *Sensori:* lähikuva sensoriparista (LED ja fotodiodi); kohde liukuu hitaasti niiden välillä.
-  - *Läpi:* symmetrinen keskikuva, josta kamera liukuu sisään ja lentää matalalla LEDin yli
-    renkaan läpi; silmukan sauma häivytetään täsmälleen taustaan.
-  - *Profiili:* pystyssä oleva rengas kolmen neljäsosan kulmasta, soikea profiili ja saumat.
-  - *Räjäytys:* räjäytetty pino pyörii oman akselinsa ympäri.
+  käännetä uudelleen. Vaihto on pehmeä häivytys: sormus liukenee hetkeksi taustan sävyyn, studio
+  vaihtuu huipulla ja taustan sävy liukuu samalla tummasta vaaleaan (tai päinvastoin).
+- **Näkymät** (`src/sequences.js`):
+  - *Showcase:* 20 sekunnin silmukka, jonka etenemisen näyttää ohut viiva alareunassa. Tumma
+    tuotekuva → liuku sensoreihin (ensin ilman valoja, sitten valot päällä noin kolme sekuntia)
+    → häivytys vaaleaan studioon ja reunaprofiiliin → sormus purkautuu räjäytyskuvaksi ja
+    kokoutuu → häivytys takaisin tummaan tuotekuvaan, joka jatkuu saumatta uuteen kierrokseen.
+  - *Sensor:* lähikuva sensoriparista (LED ja fotodiodi); kohde liukuu hitaasti niiden välillä,
+    valot ovat ensin pois ja syttyvät sitten muutamaksi sekunniksi.
+  - *Profile:* pystyssä oleva rengas kolmen neljäsosan kulmasta, soikea profiili ja saumat.
+  - *Exploded:* räjäytetty pino pyörii oman akselinsa ympäri.
 
-  Siirtymät ajoon ja takaisin ovat pehmeitä (kamera kiertää renkaan ympäri ja katsoo koko ajan
-  sitä kohti).
+  Näkymä voi tilapäisesti ohjata valoja, räjäytystä ja studiota; kosketus lopettaa näkymän ja
+  palauttaa käyttäjän omat asetukset. Siirtymät ajoon ja takaisin ovat pehmeitä (kamera kiertää
+  renkaan ympäri ja katsoo koko ajan sitä kohti).
 - **Linssit:** kirkkaat linssit ovat oikeaa valoa läpäisevää ja taittavaa materiaalia.
 - **Varjo:** pehmeä VSM-kontaktivarjo.
 - **Laatu:** liikkeessä 4× MSAA, pysähtyneenä kertaalleen 8× SSAA. Kuva piirretään vain kun
@@ -261,7 +266,7 @@ mitat (kokoluokka kuvista) ja saumojen syvyydet. Oura ei julkaise CAD-malleja.
 | `?match=axial` | akselin suuntaisen sivukuvan kamera |
 | `?studio=soft` tai `#soft` | aiempi pehmeä studio (oletus: Ouran rekonstruoitu studio) |
 | `?explode` | räjäytyskuva alusta alkaen |
-| `?seq=hero\|sensor\|through\|profile\|exploded` | käynnistä näkymä (`&seqt=` aika sekunteina) |
+| `?seq=hero\|sensor\|profile\|exploded` | käynnistä näkymä (`hero` = Showcase; `&seqt=` aika sekunteina) |
 | `?match&crop=x,y,w,h` | vertailunäkymän rajaus lähikuviin (1000 px asteikko) |
 | `?nohq` | ei SSAA:ta |
 | `?offscreen` | testitila: ei esitystä kanvaasille, kuvat luetaan `__capture()`:lla |

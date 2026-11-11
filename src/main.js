@@ -37,7 +37,6 @@ async function main() {
 
   const backendName = renderer.backend.isWebGPUBackend ? 'WebGPU' : 'WebGL 2';
   document.documentElement.dataset.backend = backendName;
-  $('backend').textContent = backendName;
 
   // --- Näkymä ---------------------------------------------------------------
   const scene = new THREE.Scene();
@@ -259,7 +258,7 @@ async function main() {
 
   // --- Jälkikäsittely ---------------------------------------------------------
   const vignetteAmount = uniform(matchMode ? 0 : 1);
-  const veil = uniform(0); // kamera-ajon sauma: kuva häivytetään täsmälleen taustaan
+  const veil = uniform(0); // dissolve: the picture fades into the exact background tone
   const bgNode = background;
   const finish = (colorNode) => {
     const glow = bloom(colorNode, 0.1, 0.35, 1.2);
@@ -328,11 +327,18 @@ async function main() {
       view.zoom = 1;
       view.pan.set(0, 0, 0);
       controls.syncZoom();
+      // ease the ring back to its home orientation once the camera hand-off is done
+      orientAnim = { t: 0, q0: ring.quaternion.clone(), q1: user.explode ? explodedQuat : heroQuat, p0: ring.position.clone(), pan0: view.pan.clone(), z0: 1 };
     },
   });
 
+  // The user's own settings. A running view may override them temporarily (director.state);
+  // they are restored when the view stops.
+  const user = { explode: false, sensors: false, dark: startDark };
+
   function setExplode(on, { fromSequence = false } = {}) {
-    if (exploder.on === on) return;
+    if (user.explode === on && exploder.on === on) return;
+    user.explode = on;
     exploder.set(on);
     ui.setExplode(on);
     if (!fromSequence) {
@@ -343,16 +349,21 @@ async function main() {
   }
 
   const setSensors = (on) => {
+    user.sensors = on;
     sensors.set(on);
     ui.setSensors(on);
     requestRender();
   };
 
+  // Studio change. The ring dissolves into the background tone (veil), the studio is swapped at
+  // the peak, and the background tone itself eases across, so the change reads as one soft move.
   let dark = false;
+  let bgTarget = 0;
+  let themeFade = null; // { to, t, swapped }
   const applyTheme = (on, renderEnv = true) => {
     dark = on;
+    bgTarget = on ? 1 : 0;
     if (renderEnv) studio.set(on ? 'dark' : lightVariant);
-    background.theme.value = on ? 1 : 0;
     ground.shadowOpacity.value = on ? 0.6 : 0.32;
     if (on) mats.setInteriorLight(1.0, 0.015, 0.045);
     else mats.setInteriorLight(1.2, 0.16, 0.36);
@@ -360,10 +371,20 @@ async function main() {
     document.querySelector('meta[name="theme-color"]').setAttribute('content', on ? '#0b0a0a' : '#d6d5d2');
     requestRender();
   };
+  const requestTheme = (on) => {
+    if ((themeFade ? themeFade.to : dark) === on) return;
+    themeFade = { to: on, t: 0, swapped: false };
+    bgTarget = on ? 1 : 0;
+  };
+  const FADE_IN = 0.4;
+  const FADE_END = 0.95;
   const setDark = (on, instant = false) => {
+    user.dark = on;
     ui.setDark(on);
-    if (instant) applyTheme(on);
-    else ui.transition(on ? '#0f0e0d' : '#d9d8d5', () => applyTheme(on));
+    if (instant) {
+      applyTheme(on);
+      background.theme.value = bgTarget;
+    } else requestTheme(on);
   };
 
   const startSequence = (id) => {
@@ -441,6 +462,10 @@ async function main() {
     lastMotion = performance.now();
   }
 
+  const sstep = (a, b, x) => {
+    const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
+    return t * t * (3 - 2 * t);
+  };
   const yAxis = new THREE.Vector3(0, 1, 0);
   const zAxis = new THREE.Vector3(0, 0, 1);
   const tmpQ = new THREE.Quaternion();
@@ -516,7 +541,30 @@ async function main() {
       }
     }
 
-    // sensorien valot
+    // scene state: what the running view asks for, otherwise the user's own settings
+    const st = director.running ? director.state : {};
+    sensors.set(st.sensors ?? user.sensors);
+    const wantExplode = st.explode ?? user.explode;
+    if (exploder.on !== wantExplode) exploder.set(wantExplode);
+    requestTheme(st.dark ?? user.dark);
+
+    if (themeFade) {
+      themeFade.t += dt;
+      if (!themeFade.swapped && themeFade.t >= FADE_IN) {
+        applyTheme(themeFade.to);
+        themeFade.swapped = true;
+      }
+      veil.value = sstep(0, FADE_IN, themeFade.t) * (1 - sstep(FADE_IN, FADE_END, themeFade.t));
+      if (themeFade.t >= FADE_END) themeFade = null;
+      moving = true;
+    } else veil.value = 0;
+    const bg = background.theme.value;
+    if (Math.abs(bg - bgTarget) > 0.002) {
+      background.theme.value = bg + (bgTarget - bg) * (1 - Math.exp(-dt / 0.22));
+      moving = true;
+    } else background.theme.value = bgTarget;
+
+    // sensor lights
     sensors.update(dt);
     if (sensors.active) moving = true;
 
@@ -529,18 +577,24 @@ async function main() {
     return moving;
   };
 
-  renderer.setAnimationLoop(() => {
-    const now = performance.now();
-    const dt = Math.min(0.05, (now - lastTime) / 1000);
-    lastTime = now;
-
+  // One simulation step: scene state, then the view camera on top of the normal camera.
+  const advance = (dt) => {
     let moving = updateScene(dt);
     if (director.active) {
       placeCamera();
       director.update(dt);
       moving = true;
     }
-    veil.value = director.veil;
+    ui.setProgress(director.running ? director.progress : null);
+    return moving;
+  };
+
+  renderer.setAnimationLoop(() => {
+    const now = performance.now();
+    const dt = Math.min(0.05, (now - lastTime) / 1000);
+    lastTime = now;
+
+    let moving = advance(dt);
 
     if (moving) {
       dirty = true;
@@ -594,6 +648,7 @@ async function main() {
   // alkutila (ympäristö on jo renderöity oikealla studiolla)
   ui.setDark(startDark);
   applyTheme(startDark, false);
+  background.theme.value = bgTarget;
   if (!matchMode && params.get('sensors') !== '0') {
     setSensors(true);
     if (params.has('sensors')) sensors.level = 1; // testit: täysi kirkkaus heti
@@ -620,7 +675,6 @@ async function main() {
   const poseCamera = () => {
     placeCamera();
     if (director.active) director.update(0);
-    veil.value = director.veil;
   };
   window.__capture = async (hq = true) => {
     const w = Math.round(container.clientWidth * pixelRatio);
@@ -705,6 +759,8 @@ async function main() {
     director,
     sensors,
     ui,
+    advance,
+    user,
     setExplode,
     setSensors,
     setDark,
@@ -723,7 +779,7 @@ async function main() {
 main().catch((err) => {
   console.error(err);
   const el = $('error');
-  el.textContent = 'Renderöinti ei käynnistynyt: ' + (err?.message || err);
+  el.textContent = 'Rendering could not start: ' + (err?.message || err);
   el.hidden = false;
   document.body.classList.add('ready');
 });

@@ -135,6 +135,19 @@ export function createUI({ finishes, onFinish, onExplode, onSensors, onDark, onS
     seqlabel.classList.remove('on');
   };
 
+  // --- showcase progress: thin line, null hides it ---
+  const progress = $('progress');
+  const fill = progress.firstElementChild;
+  let progressOn = false;
+  const setProgress = (p) => {
+    const on = p != null;
+    if (on !== progressOn) {
+      progressOn = on;
+      progress.classList.toggle('on', on);
+    }
+    if (on) fill.style.transform = `scaleX(${p.toFixed(4)})`;
+  };
+
   // --- teemanvaihto pehmeän verhon takana ---
   const veil = $('veil');
   const transition = (color, swap) => {
@@ -158,6 +171,7 @@ export function createUI({ finishes, onFinish, onExplode, onSensors, onDark, onS
     },
     sheetHeight,
     showSequence,
+    setProgress,
     hideSequence,
     transition,
   };
