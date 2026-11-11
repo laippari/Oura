@@ -148,17 +148,6 @@ export function createUI({ finishes, onFinish, onExplode, onSensors, onDark, onS
     if (on) fill.style.transform = `scaleX(${p.toFixed(4)})`;
   };
 
-  // --- teemanvaihto pehmeän verhon takana ---
-  const veil = $('veil');
-  const transition = (color, swap) => {
-    veil.style.background = color;
-    veil.classList.add('on');
-    setTimeout(() => {
-      swap();
-      requestAnimationFrame(() => requestAnimationFrame(() => veil.classList.remove('on')));
-    }, 240);
-  };
-
   return {
     setFinish,
     setExplode,
@@ -173,6 +162,5 @@ export function createUI({ finishes, onFinish, onExplode, onSensors, onDark, onS
     showSequence,
     setProgress,
     hideSequence,
-    transition,
   };
 }

@@ -136,8 +136,8 @@ function buildDarkStudio() {
   return scene;
 }
 
-// Ympäristö: yksi PMREM-kohde, johon studio renderöidään uudelleen vaihdettaessa. Tekstuuri-
-// olio pysyy samana, joten materiaaleja ei käännetä uudelleen.
+// Environment: the chosen studio is prefiltered once (PMREM). The same studio lights the ring
+// on both the dark and the light background.
 export function createStudio(renderer, size = 512, initial = 'oura') {
   const pmrem = new THREE.PMREMGenerator(renderer);
   let rt = null;

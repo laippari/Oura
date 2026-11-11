@@ -42,16 +42,20 @@ async function main() {
   const scene = new THREE.Scene();
   const background = createBackgroundNode(); // pysyvä viittaus (siluettitila vaihtaa näkymän taustan)
   scene.backgroundNode = background;
-  // Vaalea studio: Ouran rekonstruoitu studio (oletus) tai #soft = aiempi pehmeä studio.
-  // Tumma studio valitaan paneelista (tai ?dark / #dark).
-  const lightVariant = params.get('studio') === 'soft' || location.hash === '#soft' ? 'soft' : 'oura';
+  // Lighting: a single studio lights the ring in both background modes, so the gloss is the
+  // same on dark and light and the change between them is only a background (and shadow) fade.
+  // Default is the dark studio. ?studio=oura selects Oura's reconstructed product studio and
+  // ?studio=soft / #soft the earlier soft studio (both start on the light background).
+  // Match mode (?match) always uses the reconstructed studio, Silver, lights off.
   addEventListener('hashchange', () => location.reload());
   const matchMode = params.has('match');
-  // Oletukset: tumma studio, Deep Rose ja sensorien valot päällä. ?light / #light (tai #soft)
-  // avaa vaaleassa studiossa, ?finish=… valitsee värin ja ?sensors=0 sammuttaa valot.
-  // Vertailutila (?match) on aina vaalea, Silver ja valot pois.
-  const startDark = !matchMode && !params.has('light') && location.hash !== '#light' && lightVariant !== 'soft';
-  const studio = createStudio(renderer, params.has('lowenv') ? 256 : 512, startDark ? 'dark' : lightVariant);
+  const studioParam = params.get('studio') || (location.hash === '#soft' ? 'soft' : null);
+  const lightStudio = studioParam === 'soft' ? 'soft' : 'oura';
+  const studioVariant = matchMode || studioParam === 'oura' || studioParam === 'soft' ? lightStudio : 'dark';
+  // Defaults: dark background, Deep Rose, sensor lights on. ?light / #light opens on the light
+  // background, ?finish=… picks the finish, ?sensors=0 turns the lights off.
+  const startDark = studioVariant === 'dark' && !params.has('light') && location.hash !== '#light';
+  const studio = createStudio(renderer, params.has('lowenv') ? 256 : 512, studioVariant);
   const envTexture = studio.texture;
   scene.environment = envTexture;
 
@@ -258,13 +262,11 @@ async function main() {
 
   // --- Jälkikäsittely ---------------------------------------------------------
   const vignetteAmount = uniform(matchMode ? 0 : 1);
-  const veil = uniform(0); // dissolve: the picture fades into the exact background tone
-  const bgNode = background;
   const finish = (colorNode) => {
     const glow = bloom(colorNode, 0.1, 0.35, 1.2);
     const d = length(screenUV.sub(vec2(0.5)).mul(vec2(1.0, 1.15)));
     const vignette = mix(float(1), mix(float(1), float(0.86), vignetteAmount), smoothstep(0.35, 0.95, d));
-    const graded = mix(colorNode.rgb.add(glow.rgb), bgNode.rgb, veil).mul(vignette);
+    const graded = colorNode.rgb.add(glow.rgb).mul(vignette);
     const out = renderOutput(vec4(graded, 1));
     // ±½ LSB:n kohina estää tummien liukuvärien raitautumisen 8-bittisillä näytöillä
     const n = rand(screenCoordinate.xy).sub(0.5).div(255);
@@ -355,36 +357,34 @@ async function main() {
     requestRender();
   };
 
-  // Studio change. The ring dissolves into the background tone (veil), the studio is swapped at
-  // the peak, and the background tone itself eases across, so the change reads as one soft move.
+  // Light / dark: only the background tone changes (the ring keeps the same studio lighting).
+  // `background.theme` eases toward the target every frame; the contact shadow and the small
+  // amount of light the backdrop bounces into the bore follow the same value, so the change is
+  // continuous with nothing to hide.
   let dark = false;
   let bgTarget = 0;
-  let themeFade = null; // { to, t, swapped }
-  const applyTheme = (on, renderEnv = true) => {
+  const lerp = (a, b, k) => a + (b - a) * k;
+  const syncBackdrop = () => {
+    const k = background.theme.value; // 0 = light, 1 = dark
+    ground.shadowOpacity.value = lerp(0.34, 0.6, k);
+    if (studioVariant === 'dark') mats.setInteriorLight(1.0, lerp(0.05, 0.015, k), lerp(0.12, 0.045, k));
+    else mats.setInteriorLight(1.2, 0.16, 0.36); // measured against Oura's renders
+  };
+  const applyTheme = (on) => {
     dark = on;
     bgTarget = on ? 1 : 0;
-    if (renderEnv) studio.set(on ? 'dark' : lightVariant);
-    ground.shadowOpacity.value = on ? 0.6 : 0.32;
-    if (on) mats.setInteriorLight(1.0, 0.015, 0.045);
-    else mats.setInteriorLight(1.2, 0.16, 0.36);
     document.body.dataset.theme = on ? 'dark' : 'light';
     document.querySelector('meta[name="theme-color"]').setAttribute('content', on ? '#0b0a0a' : '#d6d5d2');
     requestRender();
   };
-  const requestTheme = (on) => {
-    if ((themeFade ? themeFade.to : dark) === on) return;
-    themeFade = { to: on, t: 0, swapped: false };
-    bgTarget = on ? 1 : 0;
-  };
-  const FADE_IN = 0.4;
-  const FADE_END = 0.95;
   const setDark = (on, instant = false) => {
     user.dark = on;
     ui.setDark(on);
+    applyTheme(on);
     if (instant) {
-      applyTheme(on);
       background.theme.value = bgTarget;
-    } else requestTheme(on);
+      syncBackdrop();
+    }
   };
 
   const startSequence = (id) => {
@@ -462,10 +462,6 @@ async function main() {
     lastMotion = performance.now();
   }
 
-  const sstep = (a, b, x) => {
-    const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
-    return t * t * (3 - 2 * t);
-  };
   const yAxis = new THREE.Vector3(0, 1, 0);
   const zAxis = new THREE.Vector3(0, 0, 1);
   const tmpQ = new THREE.Quaternion();
@@ -546,23 +542,18 @@ async function main() {
     sensors.set(st.sensors ?? user.sensors);
     const wantExplode = st.explode ?? user.explode;
     if (exploder.on !== wantExplode) exploder.set(wantExplode);
-    requestTheme(st.dark ?? user.dark);
+    const wantDark = st.dark ?? user.dark;
+    if (wantDark !== dark) applyTheme(wantDark);
 
-    if (themeFade) {
-      themeFade.t += dt;
-      if (!themeFade.swapped && themeFade.t >= FADE_IN) {
-        applyTheme(themeFade.to);
-        themeFade.swapped = true;
-      }
-      veil.value = sstep(0, FADE_IN, themeFade.t) * (1 - sstep(FADE_IN, FADE_END, themeFade.t));
-      if (themeFade.t >= FADE_END) themeFade = null;
-      moving = true;
-    } else veil.value = 0;
     const bg = background.theme.value;
     if (Math.abs(bg - bgTarget) > 0.002) {
-      background.theme.value = bg + (bgTarget - bg) * (1 - Math.exp(-dt / 0.22));
+      background.theme.value = bg + (bgTarget - bg) * (1 - Math.exp(-dt / 0.4));
+      syncBackdrop();
       moving = true;
-    } else background.theme.value = bgTarget;
+    } else if (bg !== bgTarget) {
+      background.theme.value = bgTarget;
+      syncBackdrop();
+    }
 
     // sensor lights
     sensors.update(dt);
@@ -647,8 +638,9 @@ async function main() {
   }
   // alkutila (ympäristö on jo renderöity oikealla studiolla)
   ui.setDark(startDark);
-  applyTheme(startDark, false);
+  applyTheme(startDark);
   background.theme.value = bgTarget;
+  syncBackdrop();
   if (!matchMode && params.get('sensors') !== '0') {
     setSensors(true);
     if (params.has('sensors')) sensors.level = 1; // testit: täysi kirkkaus heti

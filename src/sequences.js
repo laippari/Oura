@@ -25,19 +25,20 @@ export const SEQUENCES = [
   { id: 'exploded', name: 'Exploded' },
 ];
 
-// Showcase timeline (seconds). One loop:
-//   hero (dark) → glide into the sensors (unlit, then lit) → dissolve to the light studio and
-//   the edge profile → glide out while the ring comes apart → reassemble → dissolve back to the
-//   dark hero shot, which continues seamlessly into the next loop.
+// Showcase timeline (seconds). One continuous move, no cuts:
+//   hero on the dark background → glide into the sensors (unlit, then lit) → glide out to the
+//   edge profile while the background eases to light → the ring comes apart and reassembles →
+//   glide back to the hero shot while the background eases to dark; loops without a seam.
+// The ring keeps the same studio lighting throughout, so only the backdrop changes.
 export const SHOWCASE = {
   duration: 20,
   sensorIn: [3.6, 5.0], // glide hero → sensors
-  lightsOn: [6.2, 9.1],
-  toLight: 9.4, // dissolve + cut to the profile shot
-  explodeIn: [12.0, 13.5], // glide profile → exploded framing
-  exploded: [12.1, 16.0],
-  toDark: 18.2, // dissolve + cut back to the hero shot
-  dissolveLead: 0.4, // the studio change is requested this much before a cut
+  lightsOn: [6.2, 9.0],
+  profileIn: [9.2, 10.9], // glide sensors → profile
+  light: [9.3, 16.8], // light background
+  explodeIn: [12.2, 13.7], // glide profile → exploded framing
+  exploded: [12.3, 16.0],
+  heroIn: [16.4, 18.6], // glide exploded → hero
 };
 
 // Camera pose: position + look-at target, up = world y
@@ -219,32 +220,31 @@ export class Director {
     const S = SHOWCASE;
     const tau = t % S.duration;
     const within = (range) => tau >= range[0] && tau < range[1];
+    const glide = (from, to, range) => mixShots(from, to, easeInOut((tau - range[0]) / (range[1] - range[0])));
+    const profileT = tau - S.profileIn[0] + 3;
+    const explodedT = tau - S.explodeIn[0];
     let shot;
     if (tau < S.sensorIn[0]) {
       shot = this._hero(tau);
-    } else if (tau < S.toLight) {
-      // sensors: the camera settles on the LED, then drifts to the photodiode
-      const u = smooth(S.sensorIn[1], S.toLight, tau) * 0.9;
-      shot = this._sensor(u, tau);
-      if (tau < S.sensorIn[1]) shot = mixShots(this._hero(tau), shot, easeInOut((tau - S.sensorIn[0]) / (S.sensorIn[1] - S.sensorIn[0])));
+    } else if (tau < S.profileIn[0]) {
+      // sensors: the camera settles on the LED, then drifts toward the photodiode
+      shot = this._sensor(smooth(S.sensorIn[1], S.profileIn[0], tau) * 0.9, tau);
+      if (tau < S.sensorIn[1]) shot = glide(this._hero(tau), shot, S.sensorIn);
     } else if (tau < S.explodeIn[0]) {
-      shot = this._profile(tau - S.toLight + 3);
-    } else if (tau < S.toDark) {
-      shot = this._exploded(tau - S.explodeIn[0]);
-      if (tau < S.explodeIn[1]) shot = mixShots(this._profile(tau - S.toLight + 3), shot, easeInOut((tau - S.explodeIn[0]) / (S.explodeIn[1] - S.explodeIn[0])));
+      shot = this._profile(profileT);
+      if (tau < S.profileIn[1]) shot = glide(this._sensor(0.9, tau), shot, S.profileIn);
+    } else if (tau < S.heroIn[0]) {
+      shot = this._exploded(explodedT);
+      if (tau < S.explodeIn[1]) shot = glide(this._profile(profileT), shot, S.explodeIn);
     } else {
       // back to the hero shot; continues without a seam into the next loop
       shot = this._hero(tau - S.duration);
+      if (tau < S.heroIn[1]) shot = glide(this._exploded(explodedT), shot, S.heroIn);
     }
     return {
       ...shot,
       progress: tau / S.duration,
-      state: {
-        sensors: within(S.lightsOn),
-        explode: within(S.exploded),
-        // requested slightly early so the studio swaps exactly at the cut, under the dissolve
-        dark: tau < S.toLight - S.dissolveLead || tau >= S.toDark - S.dissolveLead,
-      },
+      state: { sensors: within(S.lightsOn), explode: within(S.exploded), dark: !within(S.light) },
     };
   }
 }

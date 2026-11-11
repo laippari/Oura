@@ -73,10 +73,6 @@
     @keyframes spin { to { transform: rotate(360deg); } }
     body.ready #loading { opacity: 0; }
 
-    /* teemanvaihdon pehmeä verho kanvaasin ja käyttöliittymän välissä */
-    #veil { position: fixed; inset: 0; pointer-events: none; opacity: 0; transition: opacity 0.5s var(--ease); }
-    #veil.on { opacity: 1; transition-duration: 0.22s; }
-
     /* --- alareunan pilleri ja vihje --- */
     #dock {
       position: fixed; left: 0; right: 0; bottom: 0;
@@ -216,7 +212,6 @@
 <body data-theme="dark">
   <div id="viewer"></div>
   <div id="loading"><span></span></div>
-  <div id="veil"></div>
 
   <div id="seqlabel"><b id="seqname"></b>tap to stop</div>
   <div id="progress" aria-hidden="true"><i></i></div>

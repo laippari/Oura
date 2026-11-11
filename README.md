@@ -33,7 +33,7 @@ on englanniksi:
 | Finish | Silver · Black · Stealth · Brushed Silver · Gold · Deep Rose (toimii myös räjäytettynä) |
 | Explode | sormus aukeaa räjäytyskuvaksi ja kokoutuu takaisin; räjäytettyä pinoa voi pyöritellä |
 | Sensors | LEDit päälle: vihreä sekä punainen + infrapuna vuorottelevat |
-| Dark | vaalea ↔ tumma studio, valaistus ja käyttöliittymä vaihtuvat yhdessä |
+| Dark | vaalea ↔ tumma tausta; sormuksen valaistus pysyy samana, joten vaihto on saumaton |
 | Views | Showcase · Sensor · Profile · Exploded – kamera-ajot; kosketus lopettaa ja palauttaa omat asetukset |
 
 ## Mitä mallissa on
@@ -201,8 +201,7 @@ mitat (kokoluokka kuvista) ja saumojen syvyydet. Oura ei julkaise CAD-malleja.
 ## Renderöinti
 
 - **WebGPU** three.js:n `WebGPURenderer`illä (TSL → WGSL). Jos WebGPU ei ole saatavilla,
-  käytetään automaattisesti WebGL 2:ta. Käytössä oleva taustajärjestelmä näkyy oikeassa
-  yläkulmassa.
+  käytetään automaattisesti WebGL 2:ta.
 - **Studio: Ouran oma tuotekuvausstudio, rekonstruoitu heidän virallisista kuvistaan**
   (`tools/recover_studio.py` → `src/studioEnv.js`). Virallisen 43°-kuvan jokaiselle kuperan
   pinnan pikselille laskettiin heijastussuunta mallin geometriasta ja sovitetusta kamerasta.
@@ -215,7 +214,8 @@ mitat (kokoluokka kuvista) ja saumojen syvyydet. Oura ei julkaise CAD-malleja.
   atsimuutissa niin, että pehmeys pallon pinnalla pysyy vakiona (3,5°): muuten suoraan alas
   osoittavaan heijastukseen syntyy nipistynyt piste. Lopuksi kartta esisuodatetaan
   PMREM-kartaksi.
-  Aiempi pehmeä studio on vaihtoehtona: `#soft`.
+  Tämä studio on käytössä vertailutilassa ja parametrilla `?studio=oura`; aiempi pehmeä
+  studio parametrilla `#soft`.
 - **Sisäpinnan heijastukset:** kiillotettu sisäpinta heijastaa vastakkaista seinäänsä. Säde
   jäljitetään sävyttimessä soikean reiän todellista pintaa vasten (Newton-iteraatio, oikeat
   normaalit, 3 pomppua, Fresnel jokaisella pompulla). Aiempi versio oletti suoran sylinterin,
@@ -228,17 +228,20 @@ mitat (kokoluokka kuvista) ja saumojen syvyydet. Oura ei julkaise CAD-malleja.
   heijastusten muodon (tasainen lisä teki metallista muovisen näköisen). Se painotetaan pinnan
   sisäänpäin osoittavuudella, joten titaaniset sivupinnat saavat pelkän studion. Samalla
   studion tumma horisonttivyö ei enää piirry sisäpintaan terävänä varjona.
-- **Tumma studio:** Ouran kalibroitu studio himmennettynä. Horisontti ja takaosa ovat lähes
-  mustia, ylä- ja etuvalot jäävät pehmeiksi liukuväreiksi, ja kaksi kapeaa reunavaloa
-  takaviistossa piirtää muodon valojuovina. Sisätilan lisävalo on pieni, joten sensorien valo
-  erottuu. Vaihto renderöi ympäristön uudelleen samaan PMREM-kohteeseen, joten materiaaleja ei
-  käännetä uudelleen. Vaihto on pehmeä häivytys: sormus liukenee hetkeksi taustan sävyyn, studio
-  vaihtuu huipulla ja taustan sävy liukuu samalla tummasta vaaleaan (tai päinvastoin).
+- **Oletusvalaistus (tumma studio):** Ouran kalibroitu studio himmennettynä. Horisontti ja
+  takaosa ovat lähes mustia, ylä- ja etuvalot jäävät pehmeiksi liukuväreiksi, ja kaksi kapeaa
+  reunavaloa takaviistossa piirtää muodon valojuovina. **Sama studio valaisee sormuksen sekä
+  tummalla että vaalealla taustalla**, joten kiilto on yhtenevä ja taustan vaihto on pelkkä
+  jatkuva liuku: taustan sävy, kontaktivarjon voimakkuus ja taustasta sisäpintaan heijastuva
+  pieni lisävalo seuraavat samaa arvoa. Mitään ei renderöidä uudelleen eikä peitetä.
+  Ouran rekonstruoitu tuotekuvausstudio (yllä) on käytössä vertailutilassa ja parametrilla
+  `?studio=oura`.
 - **Näkymät** (`src/sequences.js`):
   - *Showcase:* 20 sekunnin silmukka, jonka etenemisen näyttää ohut viiva alareunassa. Tumma
     tuotekuva → liuku sensoreihin (ensin ilman valoja, sitten valot päällä noin kolme sekuntia)
-    → häivytys vaaleaan studioon ja reunaprofiiliin → sormus purkautuu räjäytyskuvaksi ja
-    kokoutuu → häivytys takaisin tummaan tuotekuvaan, joka jatkuu saumatta uuteen kierrokseen.
+    → liuku reunaprofiiliin taustan vaaletessa → sormus purkautuu räjäytyskuvaksi ja kokoutuu
+    → liuku takaisin tuotekuvaan taustan tummuessa; jatkuu saumatta uuteen kierrokseen. Koko
+    ajo on yksi jatkuva kameraliike ilman leikkauksia.
   - *Sensor:* lähikuva sensoriparista (LED ja fotodiodi); kohde liukuu hitaasti niiden välillä,
     valot ovat ensin pois ja syttyvät sitten muutamaksi sekunniksi.
   - *Profile:* pystyssä oleva rengas kolmen neljäsosan kulmasta, soikea profiili ja saumat.
@@ -257,14 +260,15 @@ mitat (kokoluokka kuvista) ja saumojen syvyydet. Oura ei julkaise CAD-malleja.
 | Parametri | Toiminto |
 | --- | --- |
 | `?finish=gold` | alkuväri (oletus: Deep Rose) |
-| `?light` tai `#light` | vaalea studio (oletus: tumma) |
+| `?light` tai `#light` | vaalea tausta (oletus: tumma); valaistus on sama |
 | `?sensors=0` | sensorien valot pois alussa (oletus: päällä) |
 | `?webgl` | pakota WebGL 2 |
 | `?still` | ei automaattista pyörintää |
 | `?match` | virallisen tuotekuvan kamera ja valkoinen tausta (validointi; aina vaalea, Silver, valot pois) |
 | `?match&mask` | sama siluettina ääriviivavertailua varten |
 | `?match=axial` | akselin suuntaisen sivukuvan kamera |
-| `?studio=soft` tai `#soft` | aiempi pehmeä studio (oletus: Ouran rekonstruoitu studio) |
+| `?studio=oura` | Ouran rekonstruoitu tuotekuvausstudio (vaalea) |
+| `?studio=soft` tai `#soft` | aiempi pehmeä vaalea studio |
 | `?explode` | räjäytyskuva alusta alkaen |
 | `?seq=hero\|sensor\|profile\|exploded` | käynnistä näkymä (`hero` = Showcase; `&seqt=` aika sekunteina) |
 | `?match&crop=x,y,w,h` | vertailunäkymän rajaus lähikuviin (1000 px asteikko) |
