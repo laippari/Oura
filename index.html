@@ -165,19 +165,7 @@
     svg { fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
     button:focus-visible { outline: 2px solid var(--ring); outline-offset: 3px; }
 
-    /* --- tilarivit --- */
-    #status {
-      position: fixed; left: 50%; top: max(16px, env(safe-area-inset-top));
-      transform: translate(-50%, -8px); display: flex; align-items: center; gap: 8px;
-      padding: 7px 13px 7px 11px; border-radius: 999px;
-      background: var(--chip); -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px);
-      box-shadow: inset 0 0 0 0.5px var(--hair);
-      font-size: 11.5px; letter-spacing: 0.02em; white-space: nowrap;
-      opacity: 0; pointer-events: none; transition: opacity 0.5s ease, transform 0.5s var(--ease);
-    }
-    #status.on { opacity: 1; transform: translate(-50%, 0); }
-    #status .led { width: 7px; height: 7px; border-radius: 50%; background: var(--led, #2bd46a); box-shadow: 0 0 10px 1px var(--led, #2bd46a); }
-    #status .sub { color: var(--muted); }
+    /* --- ajon nimi --- */
     #seqlabel {
       position: fixed; left: 50%; bottom: max(22px, calc(env(safe-area-inset-bottom) + 8px));
       transform: translate(-50%, 6px); font-size: 11.5px; color: var(--muted); letter-spacing: 0.02em; white-space: nowrap;
@@ -191,7 +179,7 @@
       font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); opacity: 0.6; pointer-events: none;
     }
     #error { position: fixed; left: 16px; right: 16px; top: 40%; text-align: center; color: var(--fg); }
-    body.match #dock, body.match #sheet, body.match #status { display: none; }
+    body.match #dock, body.match #sheet { display: none; }
     @media (max-width: 360px) {
       #sheet { padding-left: 14px; padding-right: 14px; }
       #finishes button { width: 30px; height: 30px; }
@@ -199,7 +187,7 @@
     }
     @media (prefers-reduced-motion: reduce) {
       #loading span { animation: none; }
-      #sheet, #pill, #status, #seqlabel { transition-duration: 0.01s; }
+      #sheet, #pill, #seqlabel { transition-duration: 0.01s; }
     }
   </style>
   <script type="importmap">
@@ -218,7 +206,6 @@
   <div id="loading"><span></span></div>
   <div id="veil"></div>
 
-  <div id="status" aria-live="polite"><i class="led"></i><span id="status-text"></span><span class="sub" id="status-sub"></span></div>
   <div id="seqlabel"><b id="seqname"></b>napauta lopettaaksesi</div>
 
   <div id="dock">

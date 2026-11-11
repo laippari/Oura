@@ -1,12 +1,7 @@
 // Käyttöliittymä: alareunan pilleri ja nouseva alapaneeli (värit, räjäytys, sensorit, tumma
-// studio, näkymät), sensorien tilarivi ja teemanvaihdon verho. Ei kirjastokomponentteja.
+// studio, näkymät) sekä teemanvaihdon verho. Ei kirjastokomponentteja.
 
 const $ = (id) => document.getElementById(id);
-
-const STATUS = {
-  hr: { text: 'Syke', sub: 'vihreä valo', led: '#35d873' },
-  spo2: { text: 'Veren happi', sub: 'punainen + infrapuna', led: '#ff3d2e' },
-};
 
 export function createUI({ finishes, onFinish, onExplode, onSensors, onDark, onSequence, onSheet }) {
   const body = document.body;
@@ -125,27 +120,6 @@ export function createUI({ finishes, onFinish, onExplode, onSensors, onDark, onS
   sheet.addEventListener('pointerup', endDrag);
   sheet.addEventListener('pointercancel', endDrag);
 
-  // --- sensorien tilarivi ---
-  const status = $('status');
-  const led = status.querySelector('.led');
-  let lastMode = null;
-  const setStatus = (info) => {
-    if (!info) {
-      if (lastMode !== null) status.classList.remove('on');
-      lastMode = null;
-      return;
-    }
-    if (info.mode !== lastMode) {
-      const s = STATUS[info.mode];
-      $('status-text').textContent = s.text;
-      $('status-sub').textContent = s.sub;
-      status.style.setProperty('--led', s.led);
-      status.classList.add('on');
-      lastMode = info.mode;
-    }
-    led.style.transform = `scale(${0.8 + 0.45 * info.beat})`;
-  };
-
   // --- ajon nimi alareunassa ---
   const seqlabel = $('seqlabel');
   let seqTimer = 0;
@@ -183,7 +157,6 @@ export function createUI({ finishes, onFinish, onExplode, onSensors, onDark, onS
       return state.open;
     },
     sheetHeight,
-    setStatus,
     showSequence,
     hideSequence,
     transition,

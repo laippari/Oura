@@ -125,8 +125,7 @@ vain himmeänä tummanpunaisena. Todellisuudessa LEDit välkkyvät satoja kertoj
 näkyy silmälle tasaisena valona. Kiillotettu metalli ei sirota valoa, joten LEDien valo näkyy
 sisäpinnassa **peiliheijastuksina**: valaisevat ikkunat ovat valonlähteitä samassa
 säteenjäljityksessä, joka laskee sisäpinnan keskinäisheijastukset, ja niiden kuvat toistuvat
-seinää pitkin. (Aiempi tasainen hehku sai metallin näyttämään muovilta.) Ylälaidan tilarivi
-kertoo mittaustilan.
+seinää pitkin. (Aiempi tasainen hehku sai metallin näyttämään muovilta.)
 
 **Muut yksityiskohdat:**
 - suuntausmerkki ulkopinnalla kämmenen puolella: stadionin muotoinen matala upotus, 3,1 × 1,8 mm
@@ -284,7 +283,7 @@ src/controls.js            kosketus- ja hiiriohjaus
 src/explode.js             räjäytyksen animaatio
 src/sensors.js             sensorien valotila (PPG-pulssi, mittaustilat)
 src/sequences.js           elokuvamaiset näkymät ja pehmeät siirtymät
-src/ui.js                  alapaneeli, tilarivi, teemanvaihto
+src/ui.js                  alapaneeli, teemanvaihto
 src/main.js                renderöijä, jälkikäsittely, renderöintisilmukka, vertailutila
 tools/                     validointityökalut: aksiaalikuvan mittaus, kameran ja profiilin
                            sovitus, ääriviivavertailu, linssien mittaus, studion rekonstruktio

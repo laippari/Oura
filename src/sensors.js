@@ -41,7 +41,7 @@ export class SensorLights {
     return this.on || this.level > 0;
   }
 
-  // Palauttaa tilan nimen tilarivia varten (tai null)
+  // Palauttaa nykyisen mittaustilan ja pulssin vaiheen (tai null, kun valot ovat pois)
   update(dt) {
     const target = this.on ? 1 : 0;
     const k = 1 - Math.exp(-dt / 0.28);

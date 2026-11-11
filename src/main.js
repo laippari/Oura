@@ -517,7 +517,7 @@ async function main() {
     }
 
     // sensorien valot
-    ui.setStatus(sensors.update(dt));
+    sensors.update(dt);
     if (sensors.active) moving = true;
 
     // paneelin aiheuttama kuvan siirto
