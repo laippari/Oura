@@ -12,9 +12,10 @@ viisi elokuvamaista näkymää.
 python3 -m http.server 8000      # → http://localhost:8000
 ```
 
-Sivu toimii myös GitHub Pagesissa repon juuresta (Settings → Pages → Deploy from a branch →
-`main` / root; `.nojekyll` ohittaa Jekyll-käsittelyn). three.js ladataan jsDelivr-CDN:stä
-(`three@0.186.1`, lukittu versio).
+**Julkaisu:** jokainen `main`-haaran push julkaisee sivun GitHub Pagesiin
+(`.github/workflows/pages.yml`; kertaluonteinen asetus: Settings → Pages → Source → GitHub
+Actions). Sivu on staattinen, joten käännösvaihetta ei ole; julkaisuun menevät `index.html` ja
+`src/`. three.js ladataan jsDelivr-CDN:stä (`three@0.186.1`, lukittu versio).
 
 | Ele | Toiminto |
 | --- | --- |
