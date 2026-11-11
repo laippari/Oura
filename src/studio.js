@@ -117,44 +117,20 @@ export function buildStudioScene() {
   return scene;
 }
 
-// Tumma studio: Ouran kalibroitu studio himmennettynä – horisontti ja takaosa lähes mustia,
-// ylä- ja etuvalot jäävät pehmeiksi liukuväreiksi. Lisäksi kaksi kapeaa reunavaloa
-// takaviistossa piirtää muodon terävinä valojuovina (tummien tuotekuvien tyyli).
-function buildDarkStudio() {
-  const scene = new THREE.Scene();
-  const tex = upsampleEnv(STUDIO_ENV, 384, 192);
-  const mat = new THREE.MeshBasicNodeMaterial({ side: THREE.BackSide });
-  const d = positionWorld.normalize();
-  const u = atan(d.x, d.z).div(Math.PI * 2).add(0.5);
-  const v = asin(clamp(d.y, -1, 1)).div(Math.PI).add(0.5);
-  const up = mix(float(0.1), float(0.8), smoothstep(-0.1, 0.8, d.y));
-  const front = mix(float(0.45), float(1.0), smoothstep(-0.5, 0.5, d.z));
-  mat.colorNode = texture(tex, vec2(u, v)).rgb.mul(up).mul(front);
-  scene.add(new THREE.Mesh(new THREE.SphereGeometry(40, 128, 64), mat));
-  scene.add(aim(softbox(3.2, 22, 1.2, 0.42), -15, 1, -8));
-  scene.add(aim(softbox(3.2, 22, 0.95, 0.42), 15, 1, -7));
-  return scene;
-}
-
-// Environment: the chosen studio is prefiltered once (PMREM). The same studio lights the ring
-// on both the dark and the light background.
-export function createStudio(renderer, size = 512, initial = 'oura') {
+// Environment: the base studio is prefiltered once (PMREM). The dark look is derived from it
+// in the materials (see makeStudio in materials.js), so no second map is needed.
+export function createStudio(renderer, size = 512, variant = 'oura') {
   const pmrem = new THREE.PMREMGenerator(renderer);
-  let rt = null;
-  const build = (variant) => (variant === 'dark' ? buildDarkStudio() : variant === 'soft' ? buildStudioScene() : buildOuraStudio());
-  const set = (variant) => {
-    const studio = build(variant);
-    rt = pmrem.fromScene(studio, 0, 0.1, 100, { size, renderTarget: rt });
-    studio.traverse((o) => {
-      if (o.isMesh) {
-        o.geometry.dispose();
-        o.material.dispose();
-      }
-    });
-    return rt.texture;
-  };
-  const texture = set(initial);
-  return { texture, set };
+  const scene = variant === 'soft' ? buildStudioScene() : buildOuraStudio();
+  const rt = pmrem.fromScene(scene, 0, 0.1, 100, { size });
+  scene.traverse((o) => {
+    if (o.isMesh) {
+      o.geometry.dispose();
+      o.material.dispose();
+    }
+  });
+  pmrem.dispose();
+  return { texture: rt.texture };
 }
 
 // ---------------------------------------------------------------------------

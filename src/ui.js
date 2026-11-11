@@ -19,18 +19,30 @@ export function createUI({ finishes, onFinish, onExplode, onSensors, onDark, onS
     b.setAttribute('aria-label', f.name);
     b.style.setProperty('--sw-a', f.swatch[0]);
     b.style.setProperty('--sw-b', f.swatch[1]);
-    if (f.brushed) b.classList.add('brushed');
+    b.style.setProperty('--i', i);
     b.addEventListener('click', () => onFinish(i));
     bar.appendChild(b);
   });
+  // Real-material swatch images (data URLs in finish order), rendered by the viewer
+  let swatchUrls = [];
+  let current = 0;
+  const dot = pill.querySelector('.dot');
+  const setSwatchImages = (urls) => {
+    swatchUrls = urls;
+    bar.querySelectorAll('button').forEach((b, k) => {
+      if (urls[k]) b.style.backgroundImage = `url(${urls[k]})`;
+    });
+    if (urls[current]) dot.style.backgroundImage = `url(${urls[current]})`;
+  };
   const setFinish = (i) => {
     const f = finishes[i];
     bar.querySelectorAll('button').forEach((b, k) => b.setAttribute('aria-pressed', k === i ? 'true' : 'false'));
     $('finish-name').textContent = f.name;
     $('pill-name').textContent = f.name;
-    const dot = pill.querySelector('.dot');
+    current = i;
     dot.style.setProperty('--sw-a', f.swatch[0]);
     dot.style.setProperty('--sw-b', f.swatch[1]);
+    if (swatchUrls[i]) dot.style.backgroundImage = `url(${swatchUrls[i]})`;
   };
 
   // --- valinnat ---
@@ -60,7 +72,8 @@ export function createUI({ finishes, onFinish, onExplode, onSensors, onDark, onS
   });
 
   // --- paneeli: avaus, sulkeminen, vetäminen ---
-  const sheetHeight = () => sheet.getBoundingClientRect().height;
+  // height the card takes from the bottom of the screen (card + its bottom margin)
+  const sheetHeight = () => sheet.offsetHeight + 14;
   function open() {
     if (state.open) return;
     state.open = true;
@@ -150,6 +163,7 @@ export function createUI({ finishes, onFinish, onExplode, onSensors, onDark, onS
 
   return {
     setFinish,
+    setSwatchImages,
     setExplode,
     setSensors,
     setDark,

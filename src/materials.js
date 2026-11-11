@@ -19,6 +19,7 @@ import {
   abs,
   pow,
   atan,
+  asin,
   smoothstep,
   normalize,
   reflect,
@@ -113,6 +114,59 @@ function createMicroSurfaceTexture(seed = 7) {
 // jokaisella pompulla metallin Fresnel-heijastus (Schlick). Sensori-ikkunat näkyvät
 // heijastuksissa tummempina alueina. Lopuksi karkaava säde näytteistetään ympäristöstä.
 // ---------------------------------------------------------------------------
+// Studio lighting as a function of direction.
+//
+// One prefiltered map (Oura's reconstructed product studio = true colours) is the base. The
+// dark look is derived from it analytically: the map is dimmed toward the horizon and the back,
+// and two narrow rim lights are added behind the ring. `theme` (0 = light, 1 = dark) blends
+// between the two, so the lighting can change continuously with nothing to swap.
+//   dir   = world-space direction of the lookup (the map applies the scene's env rotation)
+//   level = roughness of the lookup (prefilter level)
+function makeStudio(envTexture, { theme, rims, elev }) {
+  const c = Math.cos(elev);
+  const s = Math.sin(elev);
+  // one soft vertical strip light at azimuth az0 / elevation el0 (radians)
+  const strip = (d, level, az0, el0, halfW, halfH, intensity) => {
+    const el = asin(clamp(d.y, -1, 1));
+    const az = atan(d.x, d.z).sub(az0);
+    const dAz = atan(sin(az), cos(az)).mul(cos(el));
+    const w = float(halfW).add(level.mul(0.5)); // rougher surfaces see a wider, dimmer strip
+    const across = float(1).sub(smoothstep(w.mul(0.16), w, abs(dAz)));
+    const along = float(1).sub(smoothstep(halfH * 0.86, halfH, abs(el.sub(el0))));
+    return across.mul(along).mul(float(halfW).div(w)).mul(intensity);
+  };
+  return (dir, level) => {
+    // direction in studio coordinates (the environment is tilted with the camera)
+    const d = vec3(dir.x, dir.y.mul(c).add(dir.z.mul(s)), dir.z.mul(c).sub(dir.y.mul(s)));
+    const up = mix(float(0.1), float(0.8), smoothstep(-0.1, 0.8, d.y));
+    const front = mix(float(0.45), float(1.0), smoothstep(-0.5, 0.5, d.z));
+    const dim = mix(float(1), up.mul(front), theme);
+    const lvl = float(level);
+    const rim = strip(d, lvl, -2.061, 0.059, 0.094, 0.574, 1.2).add(strip(d, lvl, 2.007, 0.06, 0.096, 0.585, 0.95));
+    return pmremTexture(envTexture, dir, level).mul(dim).add(vec3(rim.mul(rims)));
+  };
+}
+
+// Environment node for ordinary materials: the studio evaluated for the material's own
+// reflection (or normal, for diffuse light) direction.
+class StudioEnvNode extends Node {
+  static get type() {
+    return 'StudioEnvNode';
+  }
+
+  constructor(studio) {
+    super('vec3');
+    this.studio = studio;
+  }
+
+  setup(builder) {
+    const ctx = builder.context;
+    const dir = ctx.getUV ? ctx.getUV(this, builder) : vec3(0, 1, 0);
+    const level = ctx.getTextureLevel ? ctx.getTextureLevel(this) : float(0);
+    return this.studio(dir, level);
+  }
+}
+
 class InteriorReflectionNode extends Node {
   static get type() {
     return 'InteriorReflectionNode';
@@ -129,7 +183,7 @@ class InteriorReflectionNode extends Node {
     const reflWorld = ctx.getUV ? ctx.getUV(this, builder) : vec3(0, 1, 0);
     const level = ctx.getTextureLevel ? ctx.getTextureLevel(this) : float(0);
     // Irradianssikonteksti (diffuusi; tasolla 1.0): metallilla merkityksetön -> halpa näyte.
-    if (level && level.isConstNode && level.value === 1) return pmremTexture(this.envTexture, reflWorld, level);
+    if (level && level.isConstNode && level.value === 1) return this.params.studio(reflWorld, level);
     if (!this._fn) this._fn = this._build();
     return this._fn(reflWorld, level);
   }
@@ -137,12 +191,11 @@ class InteriorReflectionNode extends Node {
   // TSL-funktio: omassa funktiorungossaan muuttujat ja sijoitukset päätyvät oikeaan pinoon.
   _build() {
     const P = this.params;
-    const env = this.envTexture;
     const bounces = P.bounces ?? 3;
 
     const sample = (dirLocal, lvl) => {
       const dw = normalize(modelWorldMatrix.mul(vec4(dirLocal, 0)).xyz);
-      return pmremTexture(env, dw, lvl);
+      return P.studio(dw, lvl);
     };
 
     // Sensori-ikkunat osumapisteessä: pyöristetyn suorakaiteen etäisyysfunktio (terävä, peilimäinen
@@ -317,6 +370,10 @@ function patchMaskNode(regions, surfaceRadius, surfaceTol = 0.3) {
 }
 
 export function createMaterials({ envTexture, profile, windows, outerPatches, borePatches, params }) {
+  // lighting state: theme 0 = light (true colours), 1 = dark; rims = strength of the rim lights
+  const light = { theme: uniform(0), rims: uniform(1) };
+  const studio = makeStudio(envTexture, { theme: light.theme, rims: light.rims, elev: params?.envElevation ?? 0 });
+  const studioEnv = () => new StudioEnvNode(studio);
   const micro = createMicroSurfaceTexture();
   const brush = createBrushTexture();
   const noLights = lights([]); // rengas valaistaan studioympäristöllä (IBL); suunnattu valo vain varjolle
@@ -338,6 +395,7 @@ export function createMaterials({ envTexture, profile, windows, outerPatches, bo
   const makeFrame = (name, maskRegions) => {
     const m = new THREE.MeshPhysicalNodeMaterial({ name, metalness: 1 });
     m.lightsNode = noLights;
+    m.envNode = studioEnv();
     const lowFreq = mx_noise_float(positionLocal.mul(0.9)).mul(0.01);
     const beadN = mx_noise_float(positionLocal.mul(25)).mul(0.07);
     let rough = fin.roughness.add(lowFreq).add(microR.mul(0.12).mul(fin.brushed.oneMinus()));
@@ -395,6 +453,7 @@ export function createMaterials({ envTexture, profile, windows, outerPatches, bo
     windows: windows.map((w) => ({ th: w.thetaC, led: w.kind === 'led', hA: w.hA + 0.1, hB: w.hB + 0.1, rc: 0.82 })),
     windowReflect: 0.45,
     ledLight: ledLight.mul(sensor.reflect).mul(assembled),
+    studio,
     // sisätilan lisävalo (vaalea studio: mitattu virallisesta kuvasta, ks. InteriorReflectionNode;
     // tumma studio asettaa omat arvonsa)
     interiorLight: { gain: uniform(1.2), fill0: uniform(0.16), fill1: uniform(0.36) },
@@ -438,15 +497,18 @@ export function createMaterials({ envTexture, profile, windows, outerPatches, bo
     specularIntensity: 1,
   });
   lens.lightsNode = noLights;
+  lens.envNode = studioEnv();
   // LED-linssi hehkuu sisältä, kun sensorit ovat päällä (sironta optisessa epoksissa)
   const lensLED = lens.clone();
   lensLED.name = 'Sensor lens (LED)';
   lensLED.lightsNode = noLights;
+  lensLED.envNode = studioEnv();
   lensLED.emissiveNode = ledLight.mul(0.28);
 
   const std = (name, params) => {
     const m = new THREE.MeshPhysicalNodeMaterial({ name, ...params });
     m.lightsNode = noLights;
+    m.envNode = studioEnv();
     return m;
   };
 
@@ -514,5 +576,5 @@ export function createMaterials({ envTexture, profile, windows, outerPatches, bo
     interiorParams.interiorLight.fill1.value = fill1;
   };
 
-  return { outer, outerPatch, inner, innerPatch, lens, lensLED, internals, parts, sensor, setFinish, setInteriorLight };
+  return { outer, outerPatch, inner, innerPatch, lens, lensLED, internals, parts, sensor, light, setFinish, setInteriorLight };
 }

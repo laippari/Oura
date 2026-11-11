@@ -42,20 +42,18 @@ async function main() {
   const scene = new THREE.Scene();
   const background = createBackgroundNode(); // pysyvä viittaus (siluettitila vaihtaa näkymän taustan)
   scene.backgroundNode = background;
-  // Lighting: a single studio lights the ring in both background modes, so the gloss is the
-  // same on dark and light and the change between them is only a background (and shadow) fade.
-  // Default is the dark studio. ?studio=oura selects Oura's reconstructed product studio and
-  // ?studio=soft / #soft the earlier soft studio (both start on the light background).
-  // Match mode (?match) always uses the reconstructed studio, Silver, lights off.
+  // Lighting: one prefiltered studio map (Oura's reconstructed product studio, true colours).
+  // The dark look is derived from it analytically in the materials and blended with a single
+  // value, so light ↔ dark is a continuous change of lighting, background and shadow.
+  // ?studio=soft / #soft uses the earlier soft studio as the base instead.
+  // Match mode (?match): light, Silver, sensor lights off, no rim lights.
   addEventListener('hashchange', () => location.reload());
   const matchMode = params.has('match');
   const studioParam = params.get('studio') || (location.hash === '#soft' ? 'soft' : null);
-  const lightStudio = studioParam === 'soft' ? 'soft' : 'oura';
-  const studioVariant = matchMode || studioParam === 'oura' || studioParam === 'soft' ? lightStudio : 'dark';
-  // Defaults: dark background, Deep Rose, sensor lights on. ?light / #light opens on the light
-  // background, ?finish=… picks the finish, ?sensors=0 turns the lights off.
-  const startDark = studioVariant === 'dark' && !params.has('light') && location.hash !== '#light';
-  const studio = createStudio(renderer, params.has('lowenv') ? 256 : 512, studioVariant);
+  // Defaults: dark, Deep Rose, sensor lights on. ?light / #light opens on the light background,
+  // ?finish=… picks the finish, ?sensors=0 turns the lights off.
+  const startDark = !matchMode && studioParam == null && !params.has('light') && location.hash !== '#light';
+  const studio = createStudio(renderer, params.has('lowenv') ? 256 : 512, studioParam === 'soft' ? 'soft' : 'oura');
   const envTexture = studio.texture;
   scene.environment = envTexture;
 
@@ -88,7 +86,8 @@ async function main() {
   borePatches.push({ thetaC: Math.PI, R: Ri, zc: 0, hA: F.pad.halfLength, hB: F.pad.halfWidth, rc: F.pad.corner, margin: patchMargin });
   const outerPatches = [{ thetaC: 0, R: Ro, zc: 0, hA: F.mark.halfLength, hB: F.mark.halfWidth, rc: F.mark.corner, margin: patchMargin }];
 
-  const mats = createMaterials({ envTexture, profile, windows, outerPatches, borePatches, params: { lensThickness: params.has('lt') ? Number(params.get('lt')) : undefined } });
+  const mats = createMaterials({ envTexture, profile, windows, outerPatches, borePatches, params: { lensThickness: params.has('lt') ? Number(params.get('lt')) : undefined, envElevation: matchMode ? 0 : deg(VIEW.elevationDeg) } });
+  mats.light.rims.value = matchMode ? 0 : 1;
 
   const ring = new THREE.Group();
   ring.name = 'Oura Ring 5';
@@ -357,18 +356,19 @@ async function main() {
     requestRender();
   };
 
-  // Light / dark: only the background tone changes (the ring keeps the same studio lighting).
-  // `background.theme` eases toward the target every frame; the contact shadow and the small
-  // amount of light the backdrop bounces into the bore follow the same value, so the change is
-  // continuous with nothing to hide.
+  // Light / dark. `background.theme` eases toward the target every frame and everything else
+  // follows the same value: the studio lighting on the ring (true colours ↔ dark look), the
+  // light the surroundings bounce into the bore, and the contact shadow. Nothing is swapped,
+  // so the change is continuous.
   let dark = false;
   let bgTarget = 0;
   const lerp = (a, b, k) => a + (b - a) * k;
   const syncBackdrop = () => {
     const k = background.theme.value; // 0 = light, 1 = dark
-    ground.shadowOpacity.value = lerp(0.34, 0.6, k);
-    if (studioVariant === 'dark') mats.setInteriorLight(1.0, lerp(0.05, 0.015, k), lerp(0.12, 0.045, k));
-    else mats.setInteriorLight(1.2, 0.16, 0.36); // measured against Oura's renders
+    mats.light.theme.value = k;
+    ground.shadowOpacity.value = lerp(0.32, 0.6, k);
+    // light: measured against Oura's renders; dark: little fill, so the sensor light stands out
+    mats.setInteriorLight(lerp(1.2, 1.0, k), lerp(0.16, 0.015, k), lerp(0.36, 0.045, k));
   };
   const applyTheme = (on) => {
     dark = on;
@@ -553,6 +553,7 @@ async function main() {
     } else if (bg !== bgTarget) {
       background.theme.value = bgTarget;
       syncBackdrop();
+      if (!matchMode) refreshSwatches();
     }
 
     // sensor lights
@@ -664,6 +665,87 @@ async function main() {
     const padded = Math.ceil((w * 4) / 256) * 256;
     return px.length >= padded * (h - 1) + w * 4 && padded !== w * 4 ? padded : w * 4;
   };
+  // Finish swatches in the panel: one small sphere per finish, rendered with the ring's real
+  // frame material under the same studio, so the swatches show the true colour and gloss.
+  // They are read back and handed to the UI as images.
+  const renderSwatches = async () => {
+    const N = 168;
+    const geo = new THREE.SphereGeometry(1, 96, 64);
+    geo.computeTangents();
+    const count = geo.attributes.position.count;
+    geo.setAttribute('cavity', new THREE.BufferAttribute(new Float32Array(count).fill(1), 1));
+    geo.setAttribute('mark', new THREE.BufferAttribute(new Float32Array(count), 1));
+    geo.setAttribute('gap', new THREE.BufferAttribute(new Float32Array(count), 1));
+    const ball = new THREE.Mesh(geo, mats.outerPatch);
+    ball.rotation.y = -Math.PI / 2; // uv seam to the back
+    const ballScene = new THREE.Scene();
+    ballScene.environment = envTexture;
+    ballScene.environmentRotation.copy(scene.environmentRotation);
+    ballScene.backgroundNode = vec3(0.02);
+    ballScene.add(ball);
+    // the sphere slightly overfills the square; the round button clips it to a clean edge
+    const ballCam = new THREE.OrthographicCamera(-0.97, 0.97, 0.97, -0.97, 0.1, 20);
+    ballCam.position.copy(camDir).multiplyScalar(6);
+    ballCam.lookAt(0, 0, 0);
+    const pipeline = new THREE.RenderPipeline(renderer);
+    pipeline.outputColorTransform = false;
+    pipeline.outputNode = renderOutput(pass(ballScene, ballCam, { samples: 4 }).getTextureNode('output'));
+    const targets = FINISHES.map(() => new THREE.RenderTarget(N, N, { depthBuffer: false }));
+    // One swatch per animation frame: a scene pass is rendered only once per frame, so
+    // back-to-back renders would all reuse the first image. The ring's own finish is restored
+    // right after each render, before the next frame of the main view is drawn.
+    for (let i = 0; i < FINISHES.length; i++) {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      mats.setFinish(FINISHES[i]);
+      renderer.setRenderTarget(targets[i]);
+      pipeline.render();
+      renderer.setRenderTarget(null);
+      mats.setFinish(FINISHES[finishIndex]);
+    }
+
+    const flip = !renderer.backend.isWebGPUBackend;
+    const urls = [];
+    for (const rt of targets) {
+      const px = await renderer.readRenderTargetPixelsAsync(rt, 0, 0, N, N);
+      const stride = rowStride(px, N, N);
+      const c = document.createElement('canvas');
+      c.width = c.height = N;
+      const ctx2 = c.getContext('2d');
+      const img = ctx2.createImageData(N, N);
+      for (let y = 0; y < N; y++) {
+        const src = (flip ? N - 1 - y : y) * stride;
+        img.data.set(px.subarray(src, src + N * 4), y * N * 4);
+      }
+      for (let i = 3; i < img.data.length; i += 4) img.data[i] = 255;
+      ctx2.putImageData(img, 0, 0);
+      urls.push(c.toDataURL('image/png'));
+      rt.dispose();
+    }
+    geo.dispose();
+    pipeline.dispose?.();
+    ui.setSwatchImages(urls);
+    window.__viewer.swatches = urls.length;
+  };
+
+  // swatches follow the lighting: re-render after start and whenever the theme has settled
+  let swatchJob = null;
+  let swatchAgain = false;
+  function refreshSwatches() {
+    if (swatchJob) {
+      swatchAgain = true;
+      return;
+    }
+    swatchJob = renderSwatches()
+      .catch((e) => console.warn('swatches', e))
+      .finally(() => {
+        swatchJob = null;
+        if (swatchAgain) {
+          swatchAgain = false;
+          refreshSwatches();
+        }
+      });
+  }
+
   const poseCamera = () => {
     placeCamera();
     if (director.active) director.update(0);
@@ -766,6 +848,7 @@ async function main() {
     if (o.isMesh) verts += o.geometry.attributes.position.count;
   });
   window.__viewer.stats.vertices = verts;
+  if (!matchMode) setTimeout(refreshSwatches, 350);
 }
 
 main().catch((err) => {
