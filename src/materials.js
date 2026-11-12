@@ -214,8 +214,8 @@ class InteriorReflectionNode extends Node {
         if (w.led) {
           // ikkunan tasainen hehku + kirkas ydin emitterien kohdalla + kapea kehä reunan ulkopuolella
           const core = exp(dot(vec2(u, q.z), vec2(u, q.z)).mul(-1 / 0.85));
-          const halo = exp(max(sdf, 0).mul(-1 / 0.55)).mul(0.1);
-          led = max(led, inside.mul(float(1.1).add(core.mul(2.4))).add(halo.mul(inside.oneMinus())));
+          const halo = exp(max(sdf, 0).mul(-1 / 0.75)).mul(0.15);
+          led = max(led, inside.mul(float(1.25).add(core.mul(2.7))).add(halo.mul(inside.oneMinus())));
         }
       }
       return { cover, led };
@@ -437,9 +437,9 @@ export function createMaterials({ envTexture, profile, windows, outerPatches, bo
       const s0 = Math.sin(w.thetaC);
       const c0 = Math.cos(w.thetaC);
       const d = positionLocal.sub(vec3(profile.innerRadius * s0, -profile.innerRadius * c0, 0));
-      acc = acc.add(exp(dot(d, d).mul(-1 / 1.5)));
+      acc = acc.add(exp(dot(d, d).mul(-1 / 2.4)));
     }
-    return ledLight.mul(acc).mul(0.16).mul(assembled);
+    return ledLight.mul(acc).mul(0.24).mul(assembled);
   })();
 
   // --- Sisäkuori: kiillotettu titaani, keskinäisheijastukset -------------------------
@@ -503,7 +503,7 @@ export function createMaterials({ envTexture, profile, windows, outerPatches, bo
   lensLED.name = 'Sensor lens (LED)';
   lensLED.lightsNode = noLights;
   lensLED.envNode = studioEnv();
-  lensLED.emissiveNode = ledLight.mul(0.28);
+  lensLED.emissiveNode = ledLight.mul(0.38);
 
   const std = (name, params) => {
     const m = new THREE.MeshPhysicalNodeMaterial({ name, ...params });
@@ -541,11 +541,11 @@ export function createMaterials({ envTexture, profile, windows, outerPatches, bo
     gold: std('Au', { color: new THREE.Color(1.0, 0.766, 0.336), metalness: 1, roughness: 0.2 }),
   };
   // emitterit: lepotilassa hieman fluoresoiva sävy (kuten virallisissa kuvissa), aktiivisena kirkas
-  internals.greenZone.emissiveNode = glow([0.2, 0.9, 0.42], 0.32, GREEN, sensor.green, 5.5);
-  internals.dieGreen.emissiveNode = glow([0.25, 1, 0.5], 0.35, GREEN, sensor.green, 11);
-  internals.redZone.emissiveNode = glow([1.0, 0.4, 0.26], 0.3, RED, sensor.red, 4.5);
-  internals.dieRed.emissiveNode = glow([1, 0.2, 0.12], 0.12, RED, sensor.red, 10);
-  internals.dieIR.emissiveNode = glow([0.5, 0.1, 0.08], 0.03, IRC, sensor.ir, 6);
+  internals.greenZone.emissiveNode = glow([0.2, 0.9, 0.42], 0.32, GREEN, sensor.green, 6.6);
+  internals.dieGreen.emissiveNode = glow([0.25, 1, 0.5], 0.35, GREEN, sensor.green, 12.5);
+  internals.redZone.emissiveNode = glow([1.0, 0.4, 0.26], 0.3, RED, sensor.red, 5.6);
+  internals.dieRed.emissiveNode = glow([1, 0.2, 0.12], 0.12, RED, sensor.red, 11.5);
+  internals.dieIR.emissiveNode = glow([0.5, 0.1, 0.08], 0.03, IRC, sensor.ir, 6.5);
 
   // --- Räjäytyskuvan sisäosat --------------------------------------------------------
   const parts = {

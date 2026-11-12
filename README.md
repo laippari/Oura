@@ -4,7 +4,7 @@ Oura Ring 5 fysikaalisesti renderöitynä mobiililaitteelle, kaikilla kuudella v
 värillä. Muoto, rakenne ja sensorit on **mitattu Ouran virallisista tuotekuvista** ja
 validoitu niitä vasten (ks. alla). Mallia käännetään ja tutkitaan eleillä; muut toiminnot ovat
 alareunasta nousevassa paneelissa: värit, räjäytyskuva, sensorien valot, vaalea/tumma studio ja
-viisi elokuvamaista näkymää.
+viisi esittelykierrosta.
 
 ## Avaaminen
 
@@ -34,7 +34,7 @@ Käyttöliittymä on englanniksi:
 | Display → Explode | sormus aukeaa räjäytyskuvaksi ja kokoutuu takaisin; räjäytettyä pinoa voi pyöritellä |
 | Display → Sensors | LEDit päälle: vihreä sekä punainen + infrapuna vuorottelevat |
 | Display → Dark | vaalea ↔ tumma; valaistus, tausta ja varjo liukuvat yhtä aikaa saumattomasti |
-| Views | Showcase · Pulse · Sensor · Profile – kamera-ajot; kosketus lopettaa ja palauttaa omat asetukset |
+| Views | Signature · Horizon · Anatomy · Halo · Odyssey – viisi esittelykierrosta. Kierros ei koskaan vaihda taustaa eikä väriä: se ajetaan käyttäjän valinnoilla. Pilleri pysyy kierroksen aikana alareunassa, joten paneelin voi avata ja vaihtaa väriä tai taustaa kesken ajon; kosketus muualle lopettaa kierroksen. |
 
 ## Mitä mallissa on
 
@@ -235,24 +235,48 @@ mitat (kokoluokka kuvista) ja saumojen syvyydet. Oura ei julkaise CAD-malleja.
   yhtä aikaa, joten vaihto on jatkuva eikä mitään renderöidä uudelleen tai peitetä. Vaalealla
   taustalla sormus on tuotekuvien mukaisen kirkas, tummalla dramaattisempi; reunavalot ovat
   mukana molemmissa. Vertailutilassa reunavalot ovat pois.
-- **Näkymät** (`src/sequences.js`):
-  - *Showcase:* 20 sekunnin silmukka, jonka etenemisen näyttää ohut viiva alareunassa. Tumma
-    tuotekuva → liuku sensoreihin (ensin ilman valoja, sitten valot päällä noin kolme sekuntia)
-    → liuku reunaprofiiliin tilan vaaletessa → sormus purkautuu räjäytyskuvaksi ja kokoutuu
-    → liuku takaisin tuotekuvaan tilan tummuessa; jatkuu saumatta uuteen kierrokseen. Koko
-    ajo on yksi jatkuva kameraliike ilman leikkauksia.
-  - *Pulse:* 24 sekunnin silmukka sensorien ympärille. Kuparinvärinen (Deep Rose) sormus
-    tummalla, sensorien pulssi päällä alusta loppuun → liuku LEDiin, joka pysyy kuvassa pitkään,
-    ja siitä fotodiodiin → kamera kiertää renkaan vastakkaisen laidan taakse ja katsoo sen reunan
-    yli hehkuviin sensoreihin (runko täyttää alakuvan kuin planeetan horisontti) → runko nousee
-    ja peittää koko kuvan → sen takaa paljastuu vaalea tausta ja Brushed Silver hitaassa
-    tuotekuvassa → takaisin tummaan ja kupariin. Näkymä voi vaihtaa väriä tilapäisesti.
-  - *Sensor:* lähikuva sensoriparista (LED ja fotodiodi); kohde liukuu hitaasti niiden välillä,
-    valot ovat ensin pois ja syttyvät sitten muutamaksi sekunniksi.
-  - *Profile:* pystyssä oleva rengas kolmen neljäsosan kulmasta, soikea profiili ja saumat.
+- **Esittelykierrokset** (`src/sequences.js`): viisi silmukkaa, joissa on sekä laajoja kuvia
+  että lähikuvia ja joiden etenemisen näyttää ohut viiva alareunassa. Kierros **ei vaihda
+  taustaa eikä väriä** – se ajetaan käyttäjän valitsemalla taustalla ja värillä ja seuraa
+  niiden muutoksia kesken ajon. Sensorien valot kytketään päälle kierroksen alkaessa;
+  räjäytyskuva on ainoa tila, jota kierros itse ohjaa.
+  - *Signature* (27 s): kolmen neljäsosan tuotekuva → sisään sensoreihin (LED, sitten
+    fotodiodi) → **käännös**: sormus kierähtää linssin edessä niin, että reuna ja sitten
+    ulkopinta liukuvat kameran ohi ja ulkopinta täyttää suurimman osan kuvasta → pinta liukuu
+    ohi → sormus kierähtää takaisin kameran vetäytyessä.
+  - *Horizon* (26 s): sormus lappeellaan. Kamera tulee matalalta, kunnes ulkopinta täyttää
+    kuvan kuin planeetan reuna → kamera nousee ja sensorien valo nousee reunan takaa →
+    reunan yli LEDiin, sitten LED ja fotodiodi rinnakkain → ylös ja ulos yläviistoon.
+  - *Anatomy* (30 s): katse sormuksen sisään → alas reunalle, saumoja pitkin (värillinen
+    kuori, lukitusrengas, titaaninen sisäosa) → kamera laskeutuu ja sormus aukeaa
+    räjäytyskuvaksi; kamera menee lähelle ja kulkee pinon ylhäältä alas → sormus kokoutuu.
+  - *Halo* (25 s): sormus suoraan edestä, ympyränä. Se kierähtää kerran eteenpäin
+    kääntymättä takaisin: kamera vajoaa reiän sisään ja liukuu sisäpintaa pitkin sensoriparilta
+    toiselle, kohtisuoraan LEDiin → reunan ali → ulkopinta kulkee ohi leveänä laattana →
+    sormus on taas suoraan edestä.
+  - *Odyssey* (35 s): koko tarina. Sormus lappeellaan → nousee ja kääntää ulkopintansa
+    kameraan, kunnes se täyttää kuvan → käännös toisin päin: reunan yli reiän sisään, LEDiin
+    ja fotodiodiin → sormus laskeutuu kameran vetäytyessä, aukeaa, kamera kulkee pinon läpi →
+    sormus kokoutuu sinne, mistä kierros alkoi.
 
-  Näkymä voi tilapäisesti ohjata valoja, räjäytystä ja studiota; kosketus lopettaa näkymän ja
-  palauttaa käyttäjän omat asetukset. Siirtymät ajoon ja takaisin ovat pehmeitä (kamera kiertää
+  **Rakenne.** Lähes kaikki kuvat ovat "nauhakuvia" (`Director._band`): kamera katsoo
+  nauhan pistettä vakaasta suunnasta studiossa ja sormus asetetaan sen alle, joten jokainen
+  liike näyttää siltä, että sormus kääntyy valossa. Kuva on kourallinen parametreja – kohta
+  kehällä (`a`), kohta poikkileikkauksen ympärillä (`phi`: 180° reiän sisällä, 90° reunan
+  yllä, 0° ulkopuolella), kuvan koko nauhan kohdalla, nauhan kulma ruudulla (`twist`) – ja
+  kierros on sileä jaksollinen käyrä (monotoninen kuutiollinen, Fritsch–Carlson) näiden
+  avainarvojen läpi. Mikään ei leikkaa eikä pysähdy: laaja kuva, lähikuva ja käännös niiden
+  välissä ovat yhtä liikettä, ja silmukan sauma on jatkuva myös nopeudeltaan. Lähikuvien
+  etäisyys lasketaan kuvan koosta (mm) nauhan kohdalla, joten rajaus pitää kaikilla
+  näyttömuodoilla. Räjäytyskuvalla on oma kamerarikinsä; kierros liukuu siihen ja takaisin
+  (`mixShots`, kvinttinen pehmennys), ja pinon asento on sovitettu nauhakuvaan
+  (`twist −90°, phi 152°`), joten vaihdossa ei tule heilahdusta.
+
+  **Tarkistukset** (`pathcheck`, neljä näyttömuotoa 360 × 860 … 1280 × 720): kamera ei kulje
+  rungon läpi (pienin välys 2,9 mm), sormuksen ja kameran keskinäinen kiertonopeus on
+  enintään 45°/s eikä pysähdy missään, ja silmukan sauma on jatkuva.
+
+  Kosketus lopettaa kierroksen; siirtymät ajoon ja takaisin ovat pehmeitä (kamera kiertää
   renkaan ympäri ja katsoo koko ajan sitä kohti).
 - **Linssit:** kirkkaat linssit ovat oikeaa valoa läpäisevää ja taittavaa materiaalia.
 - **Varjo:** pehmeä VSM-kontaktivarjo.
@@ -273,7 +297,7 @@ mitat (kokoluokka kuvista) ja saumojen syvyydet. Oura ei julkaise CAD-malleja.
 | `?match=axial` | akselin suuntaisen sivukuvan kamera |
 | `?studio=soft` tai `#soft` | aiempi pehmeä studio pohjakarttana |
 | `?explode` | räjäytyskuva alusta alkaen |
-| `?seq=hero\|pulse\|sensor\|profile` | käynnistä näkymä (`hero` = Showcase; `&seqt=` aika sekunteina) |
+| `?seq=signature\|horizon\|anatomy\|halo\|odyssey` | käynnistä esittelykierros (`&seqt=` aika sekunteina) |
 | `?match&crop=x,y,w,h` | vertailunäkymän rajaus lähikuviin (1000 px asteikko) |
 | `?nohq` | ei SSAA:ta |
 | `?offscreen` | testitila: ei esitystä kanvaasille, kuvat luetaan `__capture()`:lla |
@@ -294,7 +318,7 @@ src/studioEnv.js           rekonstruoitu Ouran studio (48 × 24 säteilyruudukko
 src/controls.js            kosketus- ja hiiriohjaus
 src/explode.js             räjäytyksen animaatio
 src/sensors.js             sensorien valotila (PPG-pulssi, mittaustilat)
-src/sequences.js           elokuvamaiset näkymät ja pehmeät siirtymät
+src/sequences.js           esittelykierrokset: nauhakuvat, avainkäyrät, siirtymät
 src/ui.js                  alapaneeli, teemanvaihto
 src/main.js                renderöijä, jälkikäsittely, renderöintisilmukka, vertailutila
 tools/                     validointityökalut: aksiaalikuvan mittaus, kameran ja profiilin

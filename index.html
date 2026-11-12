@@ -95,7 +95,9 @@
     #pill .dot { width: 26px; height: 21px; border-radius: 50%; background: radial-gradient(ellipse at 40% 30%, var(--sw-a) 0%, var(--sw-b) 80%) center / 100% 100% no-repeat; }
     #pill .name { font-size: 11.5px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; }
     #pill svg { width: 14px; height: 14px; opacity: 0.55; }
-    body.sheet-open #pill, body.seq #pill { opacity: 0; transform: translateY(14px); pointer-events: none; }
+    /* during a tour the pill stays within reach, quieter and lifted clear of the progress line */
+    body.seq #pill { opacity: 0.5; transform: translateY(-16px); }
+    body.sheet-open #pill { opacity: 0; transform: translateY(14px); pointer-events: none; }
     body.sheet-open #hint, body.seq #hint { opacity: 0; }
 
     /* --- settings card: floats above the scene, opens with a small spring --- */
@@ -162,9 +164,9 @@
     .tile[aria-pressed="true"] > * { opacity: 1; }
     .tile:active { transform: scale(0.97); }
 
-    .views { display: flex; justify-content: center; gap: 10px; }
+    .views { display: flex; justify-content: center; gap: 8px; }
     .views button {
-      flex: 0 0 62px; display: flex; flex-direction: column; align-items: center; gap: 6px;
+      flex: 1 1 0; max-width: 64px; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 6px;
       padding: 0; border: 0; background: none; cursor: pointer; color: var(--fg);
     }
     .views .ico {
@@ -180,12 +182,13 @@
 
     /* --- ajon nimi --- */
     #seqlabel {
-      position: fixed; left: 50%; bottom: max(30px, calc(env(safe-area-inset-bottom) + 16px));
+      position: fixed; left: 50%; bottom: calc(max(18px, env(safe-area-inset-bottom)) + 70px);
       transform: translate(-50%, 6px); font-size: 11.5px; color: var(--muted); letter-spacing: 0.02em; white-space: nowrap;
       opacity: 0; pointer-events: none; transition: opacity 0.7s ease, transform 0.7s var(--ease);
     }
     #seqlabel b { color: var(--fg); font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; font-size: 11px; margin-right: 8px; }
     #seqlabel.on { opacity: 1; transform: translate(-50%, 0); }
+    body.sheet-open #seqlabel, body.sheet-open #progress { opacity: 0; }
 
     #credit {
       position: fixed; right: max(14px, env(safe-area-inset-right)); top: max(12px, env(safe-area-inset-top));
@@ -209,8 +212,8 @@
       #sheet { padding-left: 12px; padding-right: 12px; }
       #finishes { gap: 6px; }
       #finishes button { width: 41px; height: 33.5px; }
-      .views { gap: 6px; }
-      .views button { flex-basis: 58px; }
+      .views { gap: 5px; }
+      .views span { font-size: 10.5px; }
     }
     @media (prefers-reduced-motion: reduce) {
       #loading span { animation: none; }
@@ -264,10 +267,11 @@
     </div>
     <div class="head" style="--row:4"><span class="label">Views</span></div>
     <div class="views" id="views" style="--row:5">
-      <button type="button" data-seq="hero"><i class="ico"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="12.5" rx="8" ry="4.2"/><path d="M8.2 5.2A9 9 0 0 1 18 7.3"/><path d="M18 4.6v2.7h-2.7"/></svg></i><span>Showcase</span></button>
-      <button type="button" data-seq="pulse"><i class="ico"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="1.7" fill="currentColor" stroke="none"/><path d="M8.2 8.2a5.4 5.4 0 0 0 0 7.6M15.8 8.2a5.4 5.4 0 0 1 0 7.6"/><path d="M5.3 5.3a9.5 9.5 0 0 0 0 13.4M18.7 5.3a9.5 9.5 0 0 1 0 13.4"/></svg></i><span>Pulse</span></button>
-      <button type="button" data-seq="sensor"><i class="ico"><svg viewBox="0 0 24 24"><rect x="6.5" y="6.5" width="11" height="11" rx="3"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/></svg></i><span>Sensor</span></button>
-      <button type="button" data-seq="profile"><i class="ico"><svg viewBox="0 0 24 24"><path d="M4 12c0-3.2 1.2-4 8-4s8 .8 8 4-1.2 4-8 4-8-.8-8-4z"/></svg></i><span>Profile</span></button>
+      <button type="button" data-seq="signature"><i class="ico"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="12.5" rx="8" ry="4.2"/><path d="M8.2 5.2A9 9 0 0 1 18 7.3"/><path d="M18 4.6v2.7h-2.7"/></svg></i><span>Signature</span></button>
+      <button type="button" data-seq="horizon"><i class="ico"><svg viewBox="0 0 24 24"><path d="M3 17.2c4.2-3.4 13.8-3.4 18 0"/><circle cx="12" cy="9.2" r="2.3"/></svg></i><span>Horizon</span></button>
+      <button type="button" data-seq="anatomy"><i class="ico"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="6.6" rx="7" ry="2.2"/><ellipse cx="12" cy="17.4" rx="7" ry="2.2"/><path d="M12 10.4v3.2"/></svg></i><span>Anatomy</span></button>
+      <button type="button" data-seq="halo"><i class="ico"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7.6"/><circle cx="12" cy="16.4" r="1.2" fill="currentColor" stroke="none"/></svg></i><span>Halo</span></button>
+      <button type="button" data-seq="odyssey"><i class="ico"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="12" rx="9.2" ry="3.9" transform="rotate(-24 12 12)"/><circle cx="12" cy="12" r="2.2"/></svg></i><span>Odyssey</span></button>
     </div>
   </section>
 

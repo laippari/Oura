@@ -322,7 +322,6 @@ async function main() {
     ringInfo: { Ri, Ro, A: profile.halfWidth, ledTheta: SENSORS.led.arcMm / Ri, pdTheta: SENSORS.pd.arcMm / Ri },
     standardDistance: () => view.fitDistance * fitScale,
     standardTarget: () => view.pan.clone(),
-    setExplode: (on) => setExplode(on, { fromSequence: true }),
     onStop: () => {
       ui.hideSequence();
       view.zoom = 1;
@@ -333,8 +332,8 @@ async function main() {
     },
   });
 
-  // The user's own settings. A running view may override them temporarily (director.state);
-  // they are restored when the view stops.
+  // The user's own settings. A running tour may override the exploded view for its duration
+  // (director.state); it is restored when the tour stops.
   const user = { explode: false, sensors: false, dark: startDark };
 
   function setExplode(on, { fromSequence = false } = {}) {
@@ -360,7 +359,6 @@ async function main() {
   // follows the same value: the studio lighting on the ring (true colours ↔ dark look), the
   // light the surroundings bounce into the bore, and the contact shadow. Nothing is swapped,
   // so the change is continuous.
-  let dark = false;
   let bgTarget = 0;
   const lerp = (a, b, k) => a + (b - a) * k;
   const syncBackdrop = () => {
@@ -371,7 +369,6 @@ async function main() {
     mats.setInteriorLight(lerp(1.2, 1.0, k), lerp(0.16, 0.015, k), lerp(0.36, 0.045, k));
   };
   const applyTheme = (on) => {
-    dark = on;
     bgTarget = on ? 1 : 0;
     document.body.dataset.theme = on ? 'dark' : 'light';
     document.querySelector('meta[name="theme-color"]').setAttribute('content', on ? '#0b0a0a' : '#d6d5d2');
@@ -388,6 +385,7 @@ async function main() {
   };
 
   const startSequence = (id) => {
+    if (!user.sensors) setSensors(true); // tours are made around the sensor light
     autoRotate = false;
     orientAnim = null;
     controls.velocity.set(0, 0);
@@ -403,6 +401,11 @@ async function main() {
     camera,
     view,
     onInteract: () => {
+      // with the panel open over a running tour, a touch outside it only closes the panel
+      if (director.running && ui.isOpen) {
+        ui.close();
+        return;
+      }
       autoRotate = false;
       resetAnim = null;
       orientAnim = null;
@@ -427,7 +430,10 @@ async function main() {
   const ui = createUI({
     finishes: FINISHES,
     onFinish: (i) => applyFinish(i),
-    onExplode: (on) => setExplode(on),
+    onExplode: (on) => {
+      if (director.running) director.stop(); // the exploded view is its own mode
+      setExplode(on);
+    },
     onSensors: (on) => setSensors(on),
     onDark: (on) => setDark(on),
     onSequence: (id) => startSequence(id),
@@ -439,9 +445,8 @@ async function main() {
   });
 
   // --- Viimeistely (viralliset värit) -----------------------------------------
-  // `finishIndex` is the user's choice. What is shown (`finishNow`) eases toward the wanted
-  // finish — the user's, or the one a running view asks for — so every change of colour,
-  // gloss and texture is a soft transition instead of a jump.
+  // `finishIndex` is the user's choice. What is shown (`finishNow`) eases toward it, so every
+  // change of colour, gloss and texture is a soft transition instead of a jump.
   let finishIndex = Math.max(0, FINISHES.findIndex((f) => f.id === (params.get('finish') || (matchMode ? 'silver' : 'deep-rose'))));
   const finishParams = (f) => ({ f0: [...f.f0], roughness: f.roughness, aniso: f.aniso, brushed: f.brushed, bead: f.bead || 0 });
   const finishNow = finishParams(FINISHES[finishIndex]);
@@ -462,7 +467,6 @@ async function main() {
     return rest > 5e-4;
   };
   let finishSettled = false;
-  let viewFinish = null; // finish requested by the running view (null = the user's)
   function applyFinish(i) {
     finishIndex = i;
     finishSettled = false;
@@ -560,22 +564,17 @@ async function main() {
       }
     }
 
-    // scene state: what the running view asks for, otherwise the user's own settings
+    // Scene state. A running tour decides only whether the ring is exploded. The background,
+    // the finish and the sensor lights are always the user's own: a tour never changes the
+    // first two, and a change the user makes while a tour runs shows at once.
     const st = director.running ? director.state : {};
-    sensors.set(st.sensors ?? user.sensors);
+    sensors.set(user.sensors);
     const wantExplode = st.explode ?? user.explode;
     if (exploder.on !== wantExplode) exploder.set(wantExplode);
-    const wantDark = st.dark ?? user.dark;
-    if (wantDark !== dark) applyTheme(wantDark);
-    const wantFinish = st.finish ? FINISHES.find((f) => f.id === st.finish) : null;
-    if (wantFinish !== viewFinish) {
-      viewFinish = wantFinish;
-      finishSettled = false;
-    }
     if (!finishSettled) {
-      const changing = easeFinish(viewFinish || FINISHES[finishIndex], 1 - Math.exp(-dt / 0.3));
+      const changing = easeFinish(FINISHES[finishIndex], 1 - Math.exp(-dt / 0.3));
       if (!changing) {
-        easeFinish(viewFinish || FINISHES[finishIndex], 1);
+        easeFinish(FINISHES[finishIndex], 1);
         finishSettled = true;
       }
       moving = true;
