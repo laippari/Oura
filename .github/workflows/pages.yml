@@ -1,5 +1,5 @@
 # Julkaisee sivun GitHub Pagesiin jokaisella main-haaran pushilla.
-# Sivu on staattinen (ei käännösvaihetta): julkaistaan index.html ja src/.
+# Sivu on staattinen (ei käännösvaihetta): julkaistaan index.html, src/ ja assets/.
 name: Deploy to GitHub Pages
 
 on:
@@ -34,6 +34,7 @@ jobs:
           mkdir _site
           cp index.html _site/
           cp -r src _site/
+          cp -r assets _site/
           touch _site/.nojekyll
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
