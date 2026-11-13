@@ -122,7 +122,11 @@ function createMicroSurfaceTexture(seed = 7) {
 // between the two, so the lighting can change continuously with nothing to swap.
 //   dir   = world-space direction of the lookup (the map applies the scene's env rotation)
 //   level = roughness of the lookup (prefilter level)
-function makeStudio(envTexture, { theme, rims, elev }) {
+// A scenery backdrop brings its own prefiltered map: `setMap` swaps it into every lookup (with
+// theme and rims at 0 and `gain` as its exposure), so the ring is lit by the scene it is in.
+function makeStudio(envTexture, { theme, rims, gain, elev }) {
+  const lookups = [];
+  let current = envTexture;
   const c = Math.cos(elev);
   const s = Math.sin(elev);
   // one soft vertical strip light at azimuth az0 / elevation el0 (radians)
@@ -135,7 +139,7 @@ function makeStudio(envTexture, { theme, rims, elev }) {
     const along = float(1).sub(smoothstep(halfH * 0.86, halfH, abs(el.sub(el0))));
     return across.mul(along).mul(float(halfW).div(w)).mul(intensity);
   };
-  return (dir, level) => {
+  const studio = (dir, level) => {
     // direction in studio coordinates (the environment is tilted with the camera)
     const d = vec3(dir.x, dir.y.mul(c).add(dir.z.mul(s)), dir.z.mul(c).sub(dir.y.mul(s)));
     const up = mix(float(0.1), float(0.8), smoothstep(-0.1, 0.8, d.y));
@@ -143,8 +147,15 @@ function makeStudio(envTexture, { theme, rims, elev }) {
     const dim = mix(float(1), up.mul(front), theme);
     const lvl = float(level);
     const rim = strip(d, lvl, -2.061, 0.059, 0.094, 0.574, 1.2).add(strip(d, lvl, 2.007, 0.06, 0.096, 0.585, 0.95));
-    return pmremTexture(envTexture, dir, level).mul(dim).add(vec3(rim.mul(rims)));
+    const map = pmremTexture(current, dir, level);
+    lookups.push(map);
+    return map.mul(dim.mul(gain)).add(vec3(rim.mul(rims)));
   };
+  studio.setMap = (tex) => {
+    current = tex;
+    for (const m of lookups) m.value = tex;
+  };
+  return studio;
 }
 
 // Environment node for ordinary materials: the studio evaluated for the material's own
@@ -371,8 +382,11 @@ function patchMaskNode(regions, surfaceRadius, surfaceTol = 0.3) {
 
 export function createMaterials({ envTexture, profile, windows, outerPatches, borePatches, params }) {
   // lighting state: theme 0 = light (true colours), 1 = dark; rims = strength of the rim lights
-  const light = { theme: uniform(0), rims: uniform(1) };
-  const studio = makeStudio(envTexture, { theme: light.theme, rims: light.rims, elev: params?.envElevation ?? 0 });
+  const light = { theme: uniform(0), rims: uniform(1), gain: uniform(1) };
+  const studio = makeStudio(envTexture, { theme: light.theme, rims: light.rims, gain: light.gain, elev: params?.envElevation ?? 0 });
+  light.setMap = studio.setMap;
+  light.studio = studio; // direction → radiance, for anything else that should show the same lighting
+  light.envNode = () => new StudioEnvNode(studio); // the same lighting as an environment for other materials
   const studioEnv = () => new StudioEnvNode(studio);
   const micro = createMicroSurfaceTexture();
   const brush = createBrushTexture();

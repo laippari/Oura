@@ -14,6 +14,7 @@ import { Exploder } from './explode.js';
 import { SensorLights } from './sensors.js';
 import { Director, SEQUENCES } from './sequences.js';
 import { createUI } from './ui.js';
+import { createScenery, BACKDROPS } from './scenery.js';
 
 const params = new URLSearchParams(location.search);
 const $ = (id) => document.getElementById(id);
@@ -40,8 +41,6 @@ async function main() {
 
   // --- Näkymä ---------------------------------------------------------------
   const scene = new THREE.Scene();
-  const background = createBackgroundNode(); // pysyvä viittaus (siluettitila vaihtaa näkymän taustan)
-  scene.backgroundNode = background;
   // Lighting: one prefiltered studio map (Oura's reconstructed product studio, true colours).
   // The dark look is derived from it analytically in the materials and blended with a single
   // value, so light ↔ dark is a continuous change of lighting, background and shadow.
@@ -50,12 +49,17 @@ async function main() {
   addEventListener('hashchange', () => location.reload());
   const matchMode = params.has('match');
   const studioParam = params.get('studio') || (location.hash === '#soft' ? 'soft' : null);
-  // Defaults: dark, Deep Rose, sensor lights on. ?light / #light opens on the light background,
-  // ?finish=… picks the finish, ?sensors=0 turns the lights off.
-  const startDark = !matchMode && studioParam == null && !params.has('light') && location.hash !== '#light';
-  const studio = createStudio(renderer, params.has('lowenv') ? 256 : 512, studioParam === 'soft' ? 'soft' : 'oura');
+  // Defaults: dark, Deep Rose, sensor lights on. ?bg=light|dark|dusk|stone|still picks the
+  // backdrop (?light / #light also open on the light one), ?finish=… picks the finish,
+  // ?sensors=0 turns the lights off.
+  const startLight = matchMode || studioParam != null || params.has('light') || location.hash === '#light';
+  const startBackdrop = !matchMode && BACKDROPS.some((b) => b.id === params.get('bg')) ? params.get('bg') : startLight ? 'light' : 'dark';
+  const envSize = params.has('lowenv') ? 256 : 512;
+  const studio = createStudio(renderer, envSize, studioParam === 'soft' ? 'soft' : 'oura');
   const envTexture = studio.texture;
   scene.environment = envTexture;
+  const background = createBackgroundNode(envTexture); // pysyvä viittaus (siluettitila vaihtaa näkymän taustan)
+  scene.backgroundNode = background;
 
   if (matchMode) document.body.classList.add('match');
   // ?match = 43° tuotekuva (lineItem), ?match=axial = akselin suuntainen sivukuva (hero side view)
@@ -195,12 +199,19 @@ async function main() {
   // --- Kamera ----------------------------------------------------------------
   const camera = new THREE.PerspectiveCamera(VIEW.fov, 1, 0.1, 500);
   const elev = deg(VIEW.elevationDeg);
+  // the interactive camera's elevation and far plane follow the backdrop (a scenery set is
+  // seen from its own height and reaches much further than the studio floor)
+  let camElev = VIEW.elevationDeg;
+  let farMin = 0;
   const camDir = new THREE.Vector3(0, Math.sin(elev), Math.cos(elev));
   // Studio kääntyy kameran kallistuksen mukana: alkunäkymän heijastukset vastaavat
   // virallisen tuotekuvan asetelmaa (vaakasuora kamera, sormus 43.5° kallistettuna).
   // (etumerkki +: three.js:n PMREM-näytteistys peilaa y-akselin ennen kiertoa)
   if (!matchMode) scene.environmentRotation.set(elev, 0, 0);
   let fitScale = 1; // räjäytyskuvassa kamera vetäytyy kauemmas
+  let backdropScale = 1; // a scenery backdrop is seen from a little further back
+  let aimY = 0; // …and may be framed with the ring above or below the middle
+  const aimPoint = new THREE.Vector3();
   let fitScaleExploded = 2.5;
   const view = {
     zoom: 1,
@@ -235,10 +246,13 @@ async function main() {
     const dist = view.fitDistance * fitScale * view.zoom;
     camera.fov = VIEW.fov;
     camera.up.set(0, 1, 0);
-    camera.position.copy(view.pan).addScaledVector(camDir, dist);
-    camera.lookAt(view.pan);
+    camDir.set(0, Math.sin(deg(camElev)), Math.cos(deg(camElev)));
+    aimPoint.copy(view.pan);
+    aimPoint.y += aimY;
+    camera.position.copy(aimPoint).addScaledVector(camDir, dist);
+    camera.lookAt(aimPoint);
     camera.near = Math.max(0.05, dist * 0.02);
-    camera.far = dist + 250;
+    camera.far = Math.max(dist + 250, farMin);
     const w = container.clientWidth;
     const h = container.clientHeight;
     if (shift > 0.5) camera.setViewOffset(w, h, 0, shift, w, h);
@@ -321,7 +335,8 @@ async function main() {
     explodedQuat,
     ringInfo: { Ri, Ro, A: profile.halfWidth, ledTheta: SENSORS.led.arcMm / Ri, pdTheta: SENSORS.pd.arcMm / Ri },
     standardDistance: () => view.fitDistance * fitScale,
-    standardTarget: () => view.pan.clone(),
+    standardTarget: () => view.pan.clone().setY(view.pan.y + aimY),
+    far: () => Math.max(600, farMin),
     onStop: () => {
       ui.hideSequence();
       view.zoom = 1;
@@ -334,7 +349,7 @@ async function main() {
 
   // The user's own settings. A running tour may override the exploded view for its duration
   // (director.state); it is restored when the tour stops.
-  const user = { explode: false, sensors: false, dark: startDark };
+  const user = { explode: false, sensors: false, backdrop: startBackdrop };
 
   function setExplode(on, { fromSequence = false } = {}) {
     if (user.explode === on && exploder.on === on) return;
@@ -355,34 +370,127 @@ async function main() {
     requestRender();
   };
 
-  // Light / dark. `background.theme` eases toward the target every frame and everything else
-  // follows the same value: the studio lighting on the ring (true colours ↔ dark look), the
-  // light the surroundings bounce into the bore, and the contact shadow. Nothing is swapped,
-  // so the change is continuous.
+  // Backdrop: Light and Dark are the product studio; the others are scenery sets (scenery.js).
+  //
+  // Light ↔ Dark is one continuous change: `background.theme` eases toward the target every
+  // frame and everything else follows the same value — the studio lighting on the ring (true
+  // colours ↔ dark look), the light the surroundings bounce into the bore, the contact shadow.
+  // Nothing is swapped. A scenery backdrop brings its own light, far background and set, which
+  // are swapped in one frame; the old picture is kept on top and dissolved out (see `dissolve`).
+  const scenery = matchMode ? null : createScenery({ renderer, scene, mats, floorY, envSize });
+  const backdropOf = (id) => BACKDROPS.find((b) => b.id === id) || BACKDROPS[0];
   let bgTarget = 0;
+  let sceneLook = null; // the look of the scenery backdrop on show (null in the studio)
+  let shownBackdrop = null;
   const lerp = (a, b, k) => a + (b - a) * k;
   const syncBackdrop = () => {
     const k = background.theme.value; // 0 = light, 1 = dark
     mats.light.theme.value = k;
-    ground.shadowOpacity.value = lerp(0.32, 0.6, k);
-    // light: measured against Oura's renders; dark: little fill, so the sensor light stands out
-    mats.setInteriorLight(lerp(1.2, 1.0, k), lerp(0.16, 0.015, k), lerp(0.36, 0.045, k));
-  };
-  const applyTheme = (on) => {
-    bgTarget = on ? 1 : 0;
-    document.body.dataset.theme = on ? 'dark' : 'light';
-    document.querySelector('meta[name="theme-color"]').setAttribute('content', on ? '#0b0a0a' : '#d6d5d2');
-    requestRender();
-  };
-  const setDark = (on, instant = false) => {
-    user.dark = on;
-    ui.setDark(on);
-    applyTheme(on);
-    if (instant) {
-      background.theme.value = bgTarget;
-      syncBackdrop();
+    if (sceneLook) {
+      ground.shadowOpacity.value = sceneLook.shadow;
+      mats.setInteriorLight(...sceneLook.interior);
+    } else {
+      ground.shadowOpacity.value = lerp(0.32, 0.6, k);
+      // light: measured against Oura's renders; dark: little fill, so the sensor light stands out
+      mats.setInteriorLight(lerp(1.2, 1.0, k), lerp(0.16, 0.015, k), lerp(0.36, 0.045, k));
     }
   };
+  // everything about a backdrop that is swapped rather than eased
+  const showBackdrop = (id) => {
+    const b = backdropOf(id);
+    const { env, backdrop, look } = scenery ? scenery.show(id) : { env: null, backdrop: null, look: null };
+    sceneLook = look;
+    shownBackdrop = b.id;
+    mats.light.setMap(env || envTexture);
+    mats.light.rims.value = env || matchMode ? 0 : 1;
+    mats.light.gain.value = look ? look.gain : 1;
+    scene.environmentRotation.set(env || matchMode ? 0 : elev, 0, 0);
+    background.world.value = backdrop ? 1 : 0;
+    if (backdrop) {
+      background.far.value = backdrop;
+      background.blur.value = look.blur;
+    }
+    aimY = look?.aim ?? 0;
+    ground.light.visible = !look || look.shadow > 0;
+    farMin = look ? look.far : 0;
+    backdropScale = look ? look.distance : 1;
+    bgTarget = b.theme;
+    document.body.dataset.theme = b.ui;
+    document.querySelector('meta[name="theme-color"]').setAttribute('content', look ? look.themeColor : b.theme ? '#0b0a0a' : '#d6d5d2');
+  };
+  const camElevOf = (id) => (scenery && scenery.looks[id] ? scenery.looks[id].elevation : VIEW.elevationDeg);
+  let swap = null; // a backdrop waiting to be swapped in by the render loop: { id, instant }
+  let fadeIn = 0; // frames still to draw before the held picture starts to fade
+  let booted = false;
+  let backdropJob = 0;
+  const setBackdrop = (id, instant = false) => {
+    const from = backdropOf(shownBackdrop ?? user.backdrop);
+    const to = backdropOf(id);
+    user.backdrop = to.id;
+    ui.setBackdrop(to.id);
+    const job = ++backdropJob;
+    const go = () => {
+      if (job !== backdropJob) return; // the user has chosen again meanwhile
+      if (!from.scene && !to.scene && shownBackdrop && !instant) {
+        showBackdrop(to.id); // studio to studio: the eased change
+      } else {
+        swap = { id: to.id, instant };
+      }
+      requestRender();
+    };
+    if (scenery && !scenery.isReady(to.id)) {
+      ui.setBackdropBusy(to.id, true);
+      scenery
+        .load(to.id)
+        .then(go)
+        .catch((e) => {
+          console.warn('backdrop', e);
+          if (job === backdropJob) setBackdrop(from.id, true);
+        })
+        .finally(() => ui.setBackdropBusy(to.id, false));
+    } else go();
+  };
+  // swap a backdrop in at once (called from the render loop, or directly at start)
+  const applySwap = () => {
+    const { id } = swap;
+    swap = null;
+    showBackdrop(id);
+    background.theme.value = bgTarget;
+    camElev = camElevOf(id);
+    syncBackdrop();
+    if (booted && !matchMode) refreshSwatches();
+  };
+
+  // The old picture, kept on top of the canvas and faded out over the new backdrop.
+  const dissolve = (() => {
+    const el = $('dissolve');
+    const ctx2 = el.getContext('2d');
+    let safety = 0;
+    return {
+      capture() {
+        try {
+          const c = renderer.domElement;
+          el.width = Math.max(2, Math.round(c.width / 2));
+          el.height = Math.max(2, Math.round(c.height / 2));
+          ctx2.drawImage(c, 0, 0, el.width, el.height);
+          el.style.transition = 'none';
+          el.style.opacity = '1';
+          // never leave the old picture up, even if no new frame arrives
+          clearTimeout(safety);
+          safety = setTimeout(() => this.fade(), 1500);
+          return true;
+        } catch (e) {
+          return false;
+        }
+      },
+      fade() {
+        clearTimeout(safety);
+        el.getBoundingClientRect(); // make sure the opaque state has been applied
+        el.style.transition = 'opacity 0.9s ease';
+        el.style.opacity = '0';
+      },
+    };
+  })();
 
   const startSequence = (id) => {
     if (!user.sensors) setSensors(true); // tours are made around the sensor light
@@ -435,7 +543,8 @@ async function main() {
       setExplode(on);
     },
     onSensors: (on) => setSensors(on),
-    onDark: (on) => setDark(on),
+    backdrops: BACKDROPS,
+    onBackdrop: (id) => setBackdrop(id),
     onSequence: (id) => startSequence(id),
     onSheet: (open, height) => {
       shiftTarget = open ? height * 0.5 : 0;
@@ -520,9 +629,13 @@ async function main() {
     // paneelin ollessa auki räjäytetty pino mahtuu sen yläpuolelle
     const H = container.clientHeight || 1;
     const sheetFactor = H / Math.max(H * 0.4, H - 2 * shift);
-    fitScale = 1 + (fitScaleExploded * sheetFactor - 1) * ge;
+    fitScale = backdropScale + (Math.max(backdropScale, fitScaleExploded * sheetFactor) - backdropScale) * ge;
     const fy = (floorYExploded - floorY) * ge;
     ground.group.position.y = fy;
+    if (scenery) {
+      scenery.setDrop(fy);
+      if (scenery.update(dt)) moving = true;
+    }
     ground.light.position.y = 60 - fy; // valo pysyy paikallaan maailmassa
     controls.minFloorY = floorY + fy + boundR + (EXPLODE.halfHeight - boundR) * ge + 0.3;
     if (wasMoving) moving = true;
@@ -629,6 +742,21 @@ async function main() {
       lastMotion = now;
     }
 
+    // A backdrop waiting to be swapped in. With a picture already on screen, the present state
+    // is drawn once more and kept on top, the backdrop is swapped underneath, and the old
+    // picture fades out over the new one a couple of frames later.
+    if (swap) {
+      let held = false;
+      if (!swap.instant && !firstFrame && !params.has('offscreen')) {
+        if (!director.active) placeCamera();
+        fastPipeline.render();
+        held = dissolve.capture();
+      }
+      applySwap();
+      dirty = true;
+      if (held) fadeIn = 2;
+    }
+
     if (params.has('offscreen')) {
       // testitila: ei esitystä kanvaasille, kuvat luetaan __capture()-funktiolla
       hqDone = true;
@@ -640,6 +768,8 @@ async function main() {
       if (!director.active) placeCamera();
       fastPipeline.render();
       dirty = false;
+      if (fadeIn && --fadeIn === 0) dissolve.fade();
+      else if (fadeIn) dirty = true;
       if (moving) adaptResolution(dt);
       if (firstFrame) {
         firstFrame = false;
@@ -673,11 +803,11 @@ async function main() {
     const [x, y, z] = params.get('pan').split(',').map(Number);
     view.pan.set(x, y, z);
   }
-  // alkutila (ympäristö on jo renderöity oikealla studiolla)
-  ui.setDark(startDark);
-  applyTheme(startDark);
-  background.theme.value = bgTarget;
-  syncBackdrop();
+  // start: the studio at once; a scenery backdrop asked for in the URL follows when it has loaded
+  swap = { id: backdropOf(startBackdrop).scene ? 'dark' : startBackdrop, instant: true };
+  ui.setBackdrop(swap.id);
+  applySwap();
+  if (backdropOf(startBackdrop).scene) setBackdrop(startBackdrop, true);
   if (!matchMode && params.get('sensors') !== '0') {
     setSensors(true);
     if (params.has('sensors')) sensors.level = 1; // testit: täysi kirkkaus heti
@@ -897,7 +1027,13 @@ async function main() {
     finishNow,
     setExplode,
     setSensors,
-    setDark,
+    setBackdrop,
+    scenery,
+    background,
+    mats,
+    get backdrop() {
+      return shownBackdrop;
+    },
     startSequence,
     get hqDone() {
       return hqDone;
@@ -908,6 +1044,7 @@ async function main() {
     if (o.isMesh) verts += o.geometry.attributes.position.count;
   });
   window.__viewer.stats.vertices = verts;
+  booted = true;
   if (!matchMode) setTimeout(refreshSwatches, 350);
 }
 

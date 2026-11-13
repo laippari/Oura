@@ -3,8 +3,8 @@
 Oura Ring 5 fysikaalisesti renderöitynä mobiililaitteelle, kaikilla kuudella virallisella
 värillä. Muoto, rakenne ja sensorit on **mitattu Ouran virallisista tuotekuvista** ja
 validoitu niitä vasten (ks. alla). Mallia käännetään ja tutkitaan eleillä; muut toiminnot ovat
-alareunasta nousevassa paneelissa: värit, räjäytyskuva, sensorien valot, vaalea/tumma studio ja
-viisi esittelykierrosta.
+alareunasta nousevassa paneelissa: värit, räjäytyskuva, sensorien valot, viisi taustaa (vaalea ja
+tumma studio sekä kolme maisemaa) ja viisi esittelykierrosta.
 
 ## Avaaminen
 
@@ -33,7 +33,7 @@ Käyttöliittymä on englanniksi:
 | Finish | Silver · Black · Stealth · Brushed Silver · Gold · Deep Rose (toimii myös räjäytettynä). Näytteet ovat "kiviä": sormuksen poikkileikkausprofiili pyöräytettynä, renderöitynä oikealla kehysmateriaalilla samassa valaistuksessa. Värin vaihto liukuu pehmeästi. |
 | Display → Explode | sormus aukeaa räjäytyskuvaksi ja kokoutuu takaisin; räjäytettyä pinoa voi pyöritellä |
 | Display → Sensors | LEDit päälle: vihreä sekä punainen + infrapuna vuorottelevat |
-| Display → Dark | vaalea ↔ tumma; valaistus, tausta ja varjo liukuvat yhtä aikaa saumattomasti |
+| Background | Light · Dark · Dusk · Stone · Still. Light ja Dark ovat tuotestudio (vaihto liukuu saumattomasti: valaistus, tausta ja varjo yhtä aikaa). Dusk, Stone ja Still ovat maisemia (ks. alla); ne ladataan ensimmäisellä valinnalla ja vaihto on ristihäivytys. |
 | Views | Signature · Horizon · Anatomy · Halo · Odyssey – viisi esittelykierrosta. Kierros ei koskaan vaihda taustaa eikä väriä: se ajetaan käyttäjän valinnoilla. Pilleri pysyy kierroksen aikana alareunassa, joten paneelin voi avata ja vaihtaa väriä tai taustaa kesken ajon; kosketus muualle lopettaa kierroksen. |
 
 ## Mitä mallissa on
@@ -235,6 +235,49 @@ mitat (kokoluokka kuvista) ja saumojen syvyydet. Oura ei julkaise CAD-malleja.
   yhtä aikaa, joten vaihto on jatkuva eikä mitään renderöidä uudelleen tai peitetä. Vaalealla
   taustalla sormus on tuotekuvien mukaisen kirkas, tummalla dramaattisempi; reunavalot ovat
   mukana molemmissa. Vertailutilassa reunavalot ovat pois.
+- **Maisemataustat** (`src/scenery.js`): kolme paikkaa, joissa sormus näytetään studion
+  sijasta. Sormus leijuu niissä hieman pinnan yläpuolella, joten kaikki esittelykierrokset
+  toimivat niissä sellaisinaan.
+  - *Dusk:* järven ranta auringonlaskun jälkeen. Sormus märän kiven yllä, tyyni vesi peilaa
+    iltataivaan, sormuksen ja kivet; kaislat huojuvat epäterävinä taaempana ja vastarannan
+    tumma viiva näkyy horisontissa.
+  - *Stone:* vaalea luonnonkivi myöhäisen iltapäivän auringossa. Kiven yli liikkuu lehtien
+    pehmeä varjo, ja sormus heittää oman rengasmaisen varjonsa katsojaa kohti.
+  - *Still:* tumma studio mustan veden yllä. Sormuksen valaistus on täsmälleen sama kuin
+    Dark-taustassa; vesi peilaa sormuksen ja sensorien valon, ja hitaat rengasaallot
+    pitävät pinnan elossa. Kaukana takana on himmeä hehku, josta veden pinta erottuu.
+
+  **Rakenne.** Tämän katselimen kamera ei kierrä maailmaa (sormus kääntyy, kamera vain
+  lähestyy ja loittonee), joten maisema on edestä katsottu lavaste lähikuvaa varten.
+  - *Valo:* ulkomaisemilla on valokuvattu taivas (Poly Haven, CC0). Se on tallennettu
+    pienenä JPEG-kuvana ja vahvistuskarttana (säteily = kuva × 2^(vahvistus × aukot);
+    kaksi taivasta yhteensä alle 100 kt, virhe alkuperäiseen HDR-kuvaan 1–2 %). Horisontin
+    alapuoli täydennetään sillä, mitä lavaste edellyttää – veden peilaama taivas tai
+    auringon valaisema kivi – ja kartta esisuodatetaan kerran (PMREM). Sama kartta valaisee
+    sormuksen (`light.setMap`, `src/materials.js`) ja on sumennettuna näkyvä kaukotausta:
+    kaukana oleva on epäterävää kuten makrokuvassa.
+  - *Vesi:* tasopeili (three.js:n `reflector`, puolella resoluutiolla) ja kulkevia
+    aaltoja; pinta näyttää syvän värin ja peilikuvan Fresnelin mukaan. Still-taustassa
+    lisäksi hitaita rengasaaltoja, joiden paikka vaihtuu joka kerta.
+  - *Kivet:* vedessä pyöristyneitä kiviä (kohinalla muotoiltu pallo), pinnassa skannattu
+    kivitekstuuri kolmesta suunnasta projisoituna ja korkeuskartasta laskettu pintakuvio;
+    vesirajassa kivi on tumma ja kiiltävä. Sormuksen alla kivessä on pehmeä varjostus.
+  - *Kaislat:* piirretään kanvaasille ja sumennetaan valmiiksi (epätarkkuus etäisyyden
+    mukaan), joten ne ovat kevyitä ja näyttävät tarkennusalueen ulkopuolisilta.
+  - *Lehtivarjot:* aurinko on oikea suunnattu valo, jonka väri kantaa lehtikuvion
+    (`light.colorNode`), joten kuvio osuu kiveen liikkuvana varjona ja sormuksen oma varjo
+    tulee varjokartasta. Kiven tekstuuri pehmenee etäisyyden mukaan (mip-taso), mikä
+    jäljittelee syväterävyyttä ilman jälkikäsittelyä.
+  - *Kehystys:* puhelimen pystykuvassa sormus täyttää lähes koko leveyden, joten maisema
+    näkyy sormuksen yläpuolella, sen läpi ja alapuolella; lavasteet on aseteltu näihin
+    ikkunoihin, ja maisemissa kamera on hieman kauempana ja omalla korkeudellaan.
+  - *Vaihto:* studio ↔ studio on jatkuva liuku. Maisemaan vaihdettaessa valo, tausta ja
+    lavaste vaihtuvat yhdessä ruudussa; edellinen kuva jätetään päälle ja häivytetään
+    (`dissolve`, `src/main.js`).
+
+  Aineistot (`assets/`, yhteensä 0,7 Mt, CC0): taivaat *Belfast Sunset (pure sky)* ja
+  *Qwantani Late Afternoon (pure sky)*, tekstuurit *Rock Boulder Dry* ja *Rock 08* –
+  kaikki polyhaven.com.
 - **Esittelykierrokset** (`src/sequences.js`): viisi silmukkaa, joissa on sekä laajoja kuvia
   että lähikuvia ja joiden etenemisen näyttää ohut viiva alareunassa. Kierros **ei vaihda
   taustaa eikä väriä** – se ajetaan käyttäjän valitsemalla taustalla ja värillä ja seuraa
@@ -288,7 +331,7 @@ mitat (kokoluokka kuvista) ja saumojen syvyydet. Oura ei julkaise CAD-malleja.
 | Parametri | Toiminto |
 | --- | --- |
 | `?finish=gold` | alkuväri (oletus: Deep Rose) |
-| `?light` tai `#light` | vaalea tila (oletus: tumma) |
+| `?bg=light\|dark\|dusk\|stone\|still` | tausta (oletus: `dark`; `?light` ja `#light` toimivat yhä) |
 | `?sensors=0` | sensorien valot pois alussa (oletus: päällä) |
 | `?webgl` | pakota WebGL 2 |
 | `?still` | ei automaattista pyörintää |
@@ -314,6 +357,8 @@ src/geometry/features.js   sensori-ikkunat, linssit, LED/PD-komponentit, merkki,
 src/geometry/parts.js      räjäytyskuvan kappaleet: rungon jako, leikkauspinnat, sisäosat
 src/materials.js           PBR-materiaalit, värit, sisäheijastukset, laikkumaskit
 src/studio.js              studioympäristö, tausta, varjo
+src/scenery.js             maisemataustat: taivaat, vesi, kivet, kaislat, lehtivarjot
+assets/                    maisemien taivaat ja tekstuurit (Poly Haven, CC0)
 src/studioEnv.js           rekonstruoitu Ouran studio (48 × 24 säteilyruudukko)
 src/controls.js            kosketus- ja hiiriohjaus
 src/explode.js             räjäytyksen animaatio

@@ -3,11 +3,11 @@
 
 const $ = (id) => document.getElementById(id);
 
-export function createUI({ finishes, onFinish, onExplode, onSensors, onDark, onSequence, onSheet }) {
+export function createUI({ finishes, backdrops, onFinish, onExplode, onSensors, onBackdrop, onSequence, onSheet }) {
   const body = document.body;
   const sheet = $('sheet');
   const pill = $('pill');
-  const state = { explode: false, sensors: false, dark: false, open: false };
+  const state = { explode: false, sensors: false, open: false };
 
   // --- värit ---
   const bar = $('finishes');
@@ -60,7 +60,21 @@ export function createUI({ finishes, onFinish, onExplode, onSensors, onDark, onS
   };
   const setExplode = toggle('tg-explode', 'explode', onExplode);
   const setSensors = toggle('tg-sensors', 'sensors', onSensors);
-  const setDark = toggle('tg-dark', 'dark', onDark);
+
+  // --- backdrop: one of several (the studio, light or dark, and the scenery sets) ---
+  const bgRow = $('backdrops');
+  for (const b of backdrops) {
+    const el = document.createElement('button');
+    el.type = 'button';
+    el.dataset.bg = b.id;
+    el.setAttribute('aria-pressed', 'false');
+    el.innerHTML = `<i class="ico"><i class="chip"></i></i><span>${b.name}</span>`;
+    el.addEventListener('click', () => onBackdrop(b.id));
+    bgRow.appendChild(el);
+  }
+  const setBackdrop = (id) => bgRow.querySelectorAll('button').forEach((el) => el.setAttribute('aria-pressed', String(el.dataset.bg === id)));
+  // a scenery backdrop is fetched the first time it is chosen
+  const setBackdropBusy = (id, busy) => bgRow.querySelector(`[data-bg="${id}"]`)?.classList.toggle('busy', busy);
 
   // --- näkymät ---
   $('views').querySelectorAll('button').forEach((b) => {
@@ -166,7 +180,8 @@ export function createUI({ finishes, onFinish, onExplode, onSensors, onDark, onS
     setSwatchImages,
     setExplode,
     setSensors,
-    setDark,
+    setBackdrop,
+    setBackdropBusy,
     open,
     close,
     get isOpen() {

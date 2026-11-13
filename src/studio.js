@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { float, vec2, vec3, uv, smoothstep, screenUV, length, mix, positionWorld, uniform, select, texture, atan, asin, clamp } from 'three/tsl';
+import { float, vec2, vec3, uv, smoothstep, screenUV, length, mix, positionWorld, uniform, select, texture, atan, asin, clamp, pmremTexture, normalWorldGeometry } from 'three/tsl';
 import { STUDIO_ENV } from './studioEnv.js';
 
 // ---------------------------------------------------------------------------
@@ -136,9 +136,13 @@ export function createStudio(renderer, size = 512, variant = 'oura') {
 // ---------------------------------------------------------------------------
 // Näkyvä tausta: vaalea, hieman lämmin neutraali harmaa ja pehmeä vinjetti.
 // ---------------------------------------------------------------------------
-export function createBackgroundNode() {
+// A scenery backdrop shows its own surroundings instead: `world` = 1 draws the scene's
+// prefiltered environment (`far.value`), out of focus by `blur`, in world space.
+export function createBackgroundNode(envTexture) {
   const plain = uniform(0);
   const theme = uniform(0); // 0 = vaalea, 1 = tumma
+  const world = uniform(0);
+  const blur = uniform(0.2);
   const center = uniform(new THREE.Vector2(0.5, 0.54));
   const p = screenUV;
   const d = length(p.sub(center).mul(vec2(1.0, 1.2)));
@@ -146,9 +150,13 @@ export function createBackgroundNode() {
   // tumma: lämmin lähes musta, keskellä hieman vaaleampi (varjo ja muoto erottuvat)
   const dark = mix(vec3(0.05, 0.047, 0.044), vec3(0.008, 0.0076, 0.0072), smoothstep(0.05, 0.95, d));
   const grad = mix(light, dark, theme);
-  const node = mix(grad, vec3(1.0), plain);
+  const far = pmremTexture(envTexture, normalWorldGeometry.normalize(), blur);
+  const node = mix(mix(grad, far.rgb, world), vec3(1.0), plain);
   node.plain = plain;
   node.theme = theme;
+  node.world = world;
+  node.blur = blur;
+  node.far = far;
   node.center = center;
   return node;
 }

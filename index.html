@@ -63,6 +63,8 @@
     button { font: inherit; color: inherit; }
     #viewer { position: fixed; inset: 0; touch-action: none; }
     #viewer canvas { display: block; width: 100%; height: 100%; touch-action: none; outline: none; }
+    /* the previous picture, held over the canvas and faded out when the backdrop changes */
+    #dissolve { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; opacity: 0; }
     #loading { position: fixed; inset: 0; display: grid; place-items: center; pointer-events: none; transition: opacity 0.6s ease; }
     #loading span {
       width: 22px; height: 22px; border-radius: 50%;
@@ -149,11 +151,11 @@
     #finishes button[aria-pressed="true"] { outline-color: var(--ring); }
     body.sheet-open #finishes button:active { transform: scale(0.9); transition-delay: 0s; transition-duration: 0.15s; }
 
-    .tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 14px; }
+    .tiles { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 14px; }
     .head { margin-bottom: 9px; }
     .tile {
       display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px;
-      height: 54px; padding: 0 8px; border: 0; border-radius: 16px; cursor: pointer;
+      height: 48px; padding: 0 8px; border: 0; border-radius: 16px; cursor: pointer;
       background: var(--tile); color: var(--fg);
       transition: background 0.3s ease, transform 0.2s var(--ease);
     }
@@ -177,6 +179,19 @@
     .views span { font-size: 11px; font-weight: 500; opacity: 0.5; letter-spacing: 0.01em; transition: opacity 0.3s ease; }
     .views button:active .ico { transform: scale(0.95); background: var(--tile-on); }
     .views button:active svg, .views button:active span { opacity: 1; }
+    /* backdrops: the same tiles, each with a small picture of the place; one is chosen */
+    #backdrops { margin-bottom: 14px; }
+    #backdrops .chip { width: 26px; height: 26px; border-radius: 50%; box-shadow: inset 0 0 0 0.5px var(--hair); opacity: 0.85; transition: opacity 0.3s ease, transform 0.3s var(--ease); }
+    #backdrops [data-bg="light"] .chip { background: radial-gradient(circle at 50% 45%, #f1f0ed, #b9b8b4); }
+    #backdrops [data-bg="dark"] .chip { background: radial-gradient(circle at 50% 45%, #3a3632, #070707); }
+    #backdrops [data-bg="dusk"] .chip { background: linear-gradient(to bottom, #2a2f4a 0%, #6e5568 36%, #e9a060 49%, #f4c58a 51%, #6d5a66 56%, #141925 100%); }
+    #backdrops [data-bg="stone"] .chip { background: linear-gradient(118deg, #eadfcd 0 38%, #b3a590 39% 52%, #eadfcd 53% 68%, #c2b49e 69% 78%, #eadfcd 79%); }
+    #backdrops [data-bg="still"] .chip { background: radial-gradient(ellipse 100% 62% at 50% 62%, #060606 0 16%, #3b3b3b 18% 21%, #060606 23% 40%, #262626 42% 44%, #060606 46% 66%, #161616 68% 69%, #060606 71%); }
+    #backdrops button[aria-pressed="true"] .ico { background: var(--tile-on); }
+    #backdrops button[aria-pressed="true"] .chip { opacity: 1; transform: scale(1.08); }
+    #backdrops button[aria-pressed="true"] span { opacity: 1; }
+    #backdrops button.busy .chip { animation: busy 0.9s ease-in-out infinite alternate; }
+    @keyframes busy { from { opacity: 0.35; } to { opacity: 1; } }
     svg { fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
     button:focus-visible { outline: 2px solid var(--ring); outline-offset: 3px; }
 
@@ -233,6 +248,7 @@
 </head>
 <body data-theme="dark">
   <div id="viewer"></div>
+  <canvas id="dissolve" aria-hidden="true"></canvas>
   <div id="loading"><span></span></div>
 
   <div id="seqlabel"><b id="seqname"></b>tap to stop</div>
@@ -260,13 +276,11 @@
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12h4.2l1.8-4.5 3 10 2.4-7.2 1.4 1.7h6.2"/></svg>
         <span>Sensors</span>
       </button>
-      <button class="tile" id="tg-dark" type="button" aria-pressed="false">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7.5"/><path d="M12 4.5a7.5 7.5 0 0 1 0 15z" fill="currentColor" stroke="none"/></svg>
-        <span>Dark</span>
-      </button>
     </div>
-    <div class="head" style="--row:4"><span class="label">Views</span></div>
-    <div class="views" id="views" style="--row:5">
+    <div class="head" style="--row:4"><span class="label">Background</span></div>
+    <div class="views" id="backdrops" role="group" aria-label="Background" style="--row:5"></div>
+    <div class="head" style="--row:6"><span class="label">Views</span></div>
+    <div class="views" id="views" style="--row:7">
       <button type="button" data-seq="signature"><i class="ico"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="12.5" rx="8" ry="4.2"/><path d="M8.2 5.2A9 9 0 0 1 18 7.3"/><path d="M18 4.6v2.7h-2.7"/></svg></i><span>Signature</span></button>
       <button type="button" data-seq="horizon"><i class="ico"><svg viewBox="0 0 24 24"><path d="M3 17.2c4.2-3.4 13.8-3.4 18 0"/><circle cx="12" cy="9.2" r="2.3"/></svg></i><span>Horizon</span></button>
       <button type="button" data-seq="anatomy"><i class="ico"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="6.6" rx="7" ry="2.2"/><ellipse cx="12" cy="17.4" rx="7" ry="2.2"/><path d="M12 10.4v3.2"/></svg></i><span>Anatomy</span></button>

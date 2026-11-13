@@ -175,7 +175,7 @@ export class Director {
       cam.lookAt(target.target);
       cam.fov = target.fov;
       cam.near = target.near;
-      cam.far = 600;
+      cam.far = ctx.far ? ctx.far() : 600;
       this.lastTarget = target.target.clone();
     }
     const toTarget = target ? target.target : ctx.standardTarget();
