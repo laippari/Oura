@@ -53,7 +53,9 @@ async function main() {
   // backdrop (?light / #light also open on the light one), ?finish=… picks the finish,
   // ?sensors=0 turns the lights off.
   const startLight = matchMode || studioParam != null || params.has('light') || location.hash === '#light';
-  const startBackdrop = !matchMode && BACKDROPS.some((b) => b.id === params.get('bg')) ? params.get('bg') : startLight ? 'light' : 'dark';
+  // (match mode may be combined with ?bg=white to check that light against the official picture)
+  const bgParam = BACKDROPS.some((b) => b.id === params.get('bg')) ? params.get('bg') : null;
+  const startBackdrop = bgParam && (!matchMode || bgParam === 'white' || bgParam === 'black') ? bgParam : startLight ? 'light' : 'dark';
   const envSize = params.has('lowenv') ? 256 : 512;
   const studio = createStudio(renderer, envSize, studioParam === 'soft' ? 'soft' : 'oura');
   const envTexture = studio.texture;
@@ -275,8 +277,10 @@ async function main() {
 
   // --- Jälkikäsittely ---------------------------------------------------------
   const vignetteAmount = uniform(matchMode ? 0 : 1);
+  const blooms = []; // one per pipeline; a backdrop may ask for less glow (see showBackdrop)
   const finish = (colorNode) => {
     const glow = bloom(colorNode, 0.1, 0.35, 1.2);
+    blooms.push(glow);
     const d = length(screenUV.sub(vec2(0.5)).mul(vec2(1.0, 1.15)));
     const vignette = mix(float(1), mix(float(1), float(0.86), vignetteAmount), smoothstep(0.35, 0.95, d));
     const graded = colorNode.rgb.add(glow.rgb).mul(vignette);
@@ -377,15 +381,16 @@ async function main() {
   // colours ↔ dark look), the light the surroundings bounce into the bore, the contact shadow.
   // Nothing is swapped. A scenery backdrop brings its own light, far background and set, which
   // are swapped in one frame; the old picture is kept on top and dissolved out (see `dissolve`).
-  const scenery = matchMode ? null : createScenery({ renderer, scene, mats, floorY, envSize });
+  const scenery = createScenery({ renderer, scene, mats, floorY, envSize, tilt: matchMode ? 0 : elev });
   const backdropOf = (id) => BACKDROPS.find((b) => b.id === id) || BACKDROPS[0];
   let bgTarget = 0;
   let sceneLook = null; // the look of the scenery backdrop on show (null in the studio)
+  let ownLight = false; // …and whether it lights the ring with a map of its own
   let shownBackdrop = null;
   const lerp = (a, b, k) => a + (b - a) * k;
   const syncBackdrop = () => {
     const k = background.theme.value; // 0 = light, 1 = dark
-    mats.light.theme.value = k;
+    mats.light.theme.value = ownLight ? 0 : k; // the dark studio look applies to the studio's light only
     if (sceneLook) {
       ground.shadowOpacity.value = sceneLook.shadow;
       mats.setInteriorLight(...sceneLook.interior);
@@ -400,9 +405,12 @@ async function main() {
     const b = backdropOf(id);
     const { env, backdrop, look } = scenery ? scenery.show(id) : { env: null, backdrop: null, look: null };
     sceneLook = look;
+    ownLight = !!env;
     shownBackdrop = b.id;
     mats.light.setMap(env || envTexture);
-    mats.light.rims.value = env || matchMode ? 0 : 1;
+    mats.light.rims.value = matchMode ? 0 : look?.rims ?? (env ? 0 : 1);
+    background.setPaper('light', b.theme ? null : look?.paper);
+    background.setPaper('dark', b.theme ? look?.paper : null);
     mats.light.gain.value = look ? look.gain : 1;
     scene.environmentRotation.set(env || matchMode ? 0 : elev, 0, 0);
     background.world.value = backdrop ? 1 : 0;
@@ -411,6 +419,7 @@ async function main() {
       background.blur.value = look.blur;
     }
     aimY = look?.aim ?? 0;
+    for (const b of blooms) b.strength.value = look?.bloom ?? 0.1;
     ground.light.visible = !look || look.shadow > 0;
     farMin = look ? look.far : 0;
     backdropScale = look ? look.distance : 1;

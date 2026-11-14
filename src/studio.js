@@ -146,9 +146,13 @@ export function createBackgroundNode(envTexture) {
   const center = uniform(new THREE.Vector2(0.5, 0.54));
   const p = screenUV;
   const d = length(p.sub(center).mul(vec2(1.0, 1.2)));
-  const light = mix(vec3(0.86, 0.858, 0.852), vec3(0.6, 0.598, 0.592), smoothstep(0.1, 1.0, d));
+  // the paper behind the ring: centre and edge tone of the light and of the dark one (a backdrop
+  // may bring its own: setPaper)
+  const PAPER = { light: [[0.86, 0.858, 0.852], [0.6, 0.598, 0.592]], dark: [[0.05, 0.047, 0.044], [0.008, 0.0076, 0.0072]] };
+  const tone = { light: PAPER.light.map((c) => uniform(new THREE.Vector3(...c))), dark: PAPER.dark.map((c) => uniform(new THREE.Vector3(...c))) };
+  const light = mix(tone.light[0], tone.light[1], smoothstep(0.1, 1.0, d));
   // tumma: lämmin lähes musta, keskellä hieman vaaleampi (varjo ja muoto erottuvat)
-  const dark = mix(vec3(0.05, 0.047, 0.044), vec3(0.008, 0.0076, 0.0072), smoothstep(0.05, 0.95, d));
+  const dark = mix(tone.dark[0], tone.dark[1], smoothstep(0.05, 0.95, d));
   const grad = mix(light, dark, theme);
   const far = pmremTexture(envTexture, normalWorldGeometry.normalize(), blur);
   const node = mix(mix(grad, far.rgb, world), vec3(1.0), plain);
@@ -158,6 +162,8 @@ export function createBackgroundNode(envTexture) {
   node.blur = blur;
   node.far = far;
   node.center = center;
+  // which: 'light' | 'dark'; pair: [centre, edge] or null for the studio's own paper
+  node.setPaper = (which, pair) => (pair || PAPER[which]).forEach((c, i) => tone[which][i].value.set(...c));
   return node;
 }
 

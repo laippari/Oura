@@ -64,6 +64,8 @@ const deg = THREE.MathUtils.degToRad;
 export const BACKDROPS = [
   { id: 'light', name: 'Light', theme: 0, ui: 'light' },
   { id: 'dark', name: 'Dark', theme: 1, ui: 'dark' },
+  { id: 'white', name: 'White', theme: 0, ui: 'light', scene: true },
+  { id: 'black', name: 'Black', theme: 1, ui: 'dark', scene: true },
   { id: 'dusk', name: 'Dusk', theme: 0, ui: 'dark', scene: true },
   { id: 'stone', name: 'Stone', theme: 0, ui: 'light', scene: true },
   { id: 'still', name: 'Still', theme: 1, ui: 'dark', scene: true },
@@ -79,7 +81,12 @@ export const BACKDROPS = [
 //   distance   how much further back the camera stands than in the studio: on a phone the ring
 //              fills the width of the picture, and a place needs room around it to be seen
 //   aim        the camera looks this far (mm) above (+) or below (−) the centre of the ring
+//   rims       strength of the studio's two rim lights (only with a light of its own)
+//   paper      the plain background behind the ring: [centre, edge] (linear RGB)
+//   bloom      strength of the glow around the brightest highlights (default 0.1)
 const LOOKS = {
+  white: { elevation: 10, distance: 1, far: 0, shadow: 0.2, interior: [1.6, 0.34, 0.6], gain: 1.0, blur: 0, rims: 0, bloom: 0.06, paper: [[0.93, 0.93, 0.925], [0.8, 0.8, 0.795]], themeColor: '#f1f1ef' },
+  black: { elevation: 10, distance: 1, far: 0, shadow: 0.6, interior: [1.1, 0.05, 0.12], gain: 1.0, blur: 0, rims: 0.3, bloom: 0.035, paper: [[0.012, 0.012, 0.012], [0.0, 0.0, 0.0]], themeColor: '#000000' },
   dusk: { elevation: 5, distance: 1.32, far: 4000, shadow: 0, interior: [1.1, 0.05, 0.12], gain: 1.45, blur: 0.09, themeColor: '#191a24' },
   stone: { elevation: 13, distance: 1.15, far: 4000, shadow: 0, interior: [1.2, 0.2, 0.4], gain: 1.0, blur: 0.16, themeColor: '#cfc6b8' },
   still: { elevation: 9, distance: 1.22, aim: -6, far: 2500, shadow: 0, interior: [1.0, 0.015, 0.045], gain: 1.0, blur: 0.035, themeColor: '#0b0a0a' },
@@ -406,7 +413,7 @@ function leafShadowTexture(seed) {
 
 // --- the backdrops --------------------------------------------------------------------------------
 
-export function createScenery({ renderer, scene, mats, floorY, envSize = 512, assets = 'assets/' }) {
+export function createScenery({ renderer, scene, mats, floorY, envSize = 512, assets = 'assets/', tilt = 0 }) {
   const clock = uniform(0); // seconds, runs while a scenery backdrop is shown
   const root = new THREE.Group();
   root.name = 'scenery';
@@ -417,6 +424,25 @@ export function createScenery({ renderer, scene, mats, floorY, envSize = 512, as
 
   const sky = (name, stops) =>
     Promise.all([loadTexture(`${assets}${name}.jpg`, { srgb: true, repeat: true, mip: false }), loadTexture(`${assets}${name}_gain.png`, { repeat: true, mip: false })]).then(([base, gain]) => ({ base, gain, stops }));
+
+  // ---- White / Black: the lighting of Oura's own product picture ----
+  // Oura lights each colour of the ring differently. Silver (which the Light and Dark studio
+  // was reconstructed from) is lit fairly evenly; Deep Rose gets a far more sculpted light: a
+  // very large, bright softbox above and behind, flags that keep the back corners dark, a small
+  // box low at the front right, and a dark floor. This map is that light, read off the official
+  // Deep Rose picture direction by direction (tools/build_showroom.py). It is given in the
+  // frame of that picture, whose camera is level; here the camera looks down by `tilt`, so the
+  // map is tipped with it and the ring's usual pose shows what the picture shows.
+  // The two backdrops share the map and have no set: White and Black are only the paper.
+  let showroom = null;
+  const buildShowroom = () => {
+    showroom ||= sky('showroom', 2).then((S) => {
+      const c = Math.cos(tilt);
+      const sn = Math.sin(tilt);
+      return prefilter(renderer, (d) => vec3(skyRadiance(S, vec3(d.x, d.y.mul(c).sub(d.z.mul(sn)), d.y.mul(sn).add(d.z.mul(c))), 0).r), envSize);
+    });
+    return showroom.then((env) => ({ group: new THREE.Group(), env, backdrop: null, still: true }));
+  };
 
   // ---- Dusk: lake shore after sunset ----
   // On a phone the picture is tall and narrow and the ring fills most of its width, so the
@@ -609,7 +635,7 @@ export function createScenery({ renderer, scene, mats, floorY, envSize = 512, as
     return { group, env: null, backdrop };
   }
 
-  const builders = { dusk: buildDusk, stone: buildStone, still: buildStill };
+  const builders = { white: buildShowroom, black: buildShowroom, dusk: buildDusk, stone: buildStone, still: buildStill };
   const built = {};
   const pending = {};
   let current = null;
@@ -636,7 +662,8 @@ export function createScenery({ renderer, scene, mats, floorY, envSize = 512, as
       for (const [key, b] of Object.entries(built)) b.group.visible = key === current;
       const b = current && built[current];
       // env lights the ring (null = the studio's own light); backdrop is what is seen far away
-      return b ? { env: b.env, backdrop: b.backdrop || b.env, look: LOOKS[current] } : { env: null, backdrop: null, look: null };
+      // (null = the plain paper of the studio)
+      return b ? { env: b.env, backdrop: b.backdrop === undefined ? b.env : b.backdrop, look: LOOKS[current] } : { env: null, backdrop: null, look: null };
     },
     // the floor drops in the exploded view; the set goes with it
     setDrop(y) {
@@ -645,7 +672,7 @@ export function createScenery({ renderer, scene, mats, floorY, envSize = 512, as
     },
     // advance the scene's own motion (water, leaves, reeds); true while something moves
     update(dt) {
-      if (!current) return false;
+      if (!current || built[current].still) return false;
       clock.value += dt;
       return true;
     },

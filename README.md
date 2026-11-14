@@ -33,7 +33,7 @@ Käyttöliittymä on englanniksi:
 | Finish | Silver · Black · Stealth · Brushed Silver · Gold · Deep Rose (toimii myös räjäytettynä). Näytteet ovat "kiviä": sormuksen poikkileikkausprofiili pyöräytettynä, renderöitynä oikealla kehysmateriaalilla samassa valaistuksessa. Värin vaihto liukuu pehmeästi. |
 | Display → Explode | sormus aukeaa räjäytyskuvaksi ja kokoutuu takaisin; räjäytettyä pinoa voi pyöritellä |
 | Display → Sensors | LEDit päälle: vihreä sekä punainen + infrapuna vuorottelevat |
-| Background | Light · Dark · Dusk · Stone · Still. Light ja Dark ovat tuotestudio (vaihto liukuu saumattomasti: valaistus, tausta ja varjo yhtä aikaa). Dusk, Stone ja Still ovat maisemia (ks. alla); ne ladataan ensimmäisellä valinnalla ja vaihto on ristihäivytys. |
+| Background | Light · Dark · White · Black · Dusk · Stone · Still. White ja Black käyttävät Ouran virallisen Deep Rose -tuotekuvan valaistusta (ks. alla). Light ja Dark ovat tuotestudio (vaihto liukuu saumattomasti: valaistus, tausta ja varjo yhtä aikaa). Dusk, Stone ja Still ovat maisemia (ks. alla); ne ladataan ensimmäisellä valinnalla ja vaihto on ristihäivytys. |
 | Views | Signature · Horizon · Anatomy · Halo · Odyssey – viisi esittelykierrosta. Kierros ei koskaan vaihda taustaa eikä väriä: se ajetaan käyttäjän valinnoilla. Pilleri pysyy kierroksen aikana alareunassa, joten paneelin voi avata ja vaihtaa väriä tai taustaa kesken ajon; kosketus muualle lopettaa kierroksen. |
 
 ## Mitä mallissa on
@@ -235,6 +235,35 @@ mitat (kokoluokka kuvista) ja saumojen syvyydet. Oura ei julkaise CAD-malleja.
   yhtä aikaa, joten vaihto on jatkuva eikä mitään renderöidä uudelleen tai peitetä. Vaalealla
   taustalla sormus on tuotekuvien mukaisen kirkas, tummalla dramaattisempi; reunavalot ovat
   mukana molemmissa. Vertailutilassa reunavalot ovat pois.
+- **White ja Black – Ouran tuotekuvan valaistus** (`src/scenery.js`, `tools/build_showroom.py`):
+  Oura valaisee sormuksen jokaisen värin eri tavalla. Silver-kuva, josta Light- ja
+  Dark-taustojen studio on rekonstruoitu, on valaistu melko tasaisesti. Deep Rose -kuvassa valo
+  on veistoksellisempi: hyvin suuri ja kirkas valolaatikko ylhäällä ja takana (1,3–1,8 ×
+  Silver-kuvan), takakulmat pimentävät liput, pieni laatikko edessä oikealla alhaalla ja
+  3–4 kertaa tummempi lattia. Tämä valaistus on luettu virallisesta Deep Rose -kuvasta suunta
+  suunnalta samalla menetelmällä kuin studio: jokainen kuperan kiillotetun pinnan pikseli
+  peilaa yhden suunnan, ja valo = käänteinen sävykartoitus(pikseli) / Fresnel-heijastus.
+  Näytteet (617 000 ulkopinnan pikseliä) kootaan 3,75°:n ruudukkoon, aukot täytetään
+  naapureista, ja kartta tallennetaan kuten maisemien taivaat (12 kt). Kirkkaissa kohdissa
+  käytetään kolmen värikanavan keskiarvoa, koska kuvan huippuvalot ovat pinnan omaa väriä
+  valkoisempia.
+
+  Tarkistus virallisen kuvan kameralla (`?match&bg=white&finish=deep-rose`), ulkopinnan
+  kirkkaus nauhaa pitkin vasemmalta oikealle (20 lohkoa, näyttölineaarinen × 100):
+
+  | | |
+  | --- | --- |
+  | virallinen | 3 1 2 6 15 30 41 46 47 46 43 40 35 30 26 23 19 12 1 2 |
+  | White / Black | 3 1 2 6 16 30 40 43 44 43 41 38 33 29 26 23 19 11 2 3 |
+  | Light (aiempi studio) | 8 6 10 17 23 28 32 34 35 36 36 35 34 31 28 23 17 10 6 8 |
+
+  Titaanisen sisäpinnan keskikirkkaus: virallinen 0,459, malli 0,443. Kartan kirkkain kaista
+  (takavalo nauhan yläreunassa) on loivennettu, ja näillä taustoilla hehku (bloom) on
+  pienempi, koska muuten reunaan syntyi mustalla taustalla halo. Kartta on kuvan
+  koordinaatistossa (vaakasuora kamera) ja kallistetaan katselimen kameran mukana, joten
+  sormuksen tavallinen asento näyttää saman kuin tuotekuva. White ja Black eroavat vain
+  taustapaperin sävyssä (lähes valkoinen / musta); Black-taustalla on lisäksi heikot
+  reunavalot, jotta sormuksen tummat sivut erottuvat taustasta.
 - **Maisemataustat** (`src/scenery.js`): kolme paikkaa, joissa sormus näytetään studion
   sijasta. Sormus leijuu niissä hieman pinnan yläpuolella, joten kaikki esittelykierrokset
   toimivat niissä sellaisinaan.
@@ -331,7 +360,7 @@ mitat (kokoluokka kuvista) ja saumojen syvyydet. Oura ei julkaise CAD-malleja.
 | Parametri | Toiminto |
 | --- | --- |
 | `?finish=gold` | alkuväri (oletus: Deep Rose) |
-| `?bg=light\|dark\|dusk\|stone\|still` | tausta (oletus: `dark`; `?light` ja `#light` toimivat yhä) |
+| `?bg=light\|dark\|white\|black\|dusk\|stone\|still` | tausta (oletus: `dark`; `?light` ja `#light` toimivat yhä) |
 | `?sensors=0` | sensorien valot pois alussa (oletus: päällä) |
 | `?webgl` | pakota WebGL 2 |
 | `?still` | ei automaattista pyörintää |
@@ -358,7 +387,7 @@ src/geometry/parts.js      räjäytyskuvan kappaleet: rungon jako, leikkauspinna
 src/materials.js           PBR-materiaalit, värit, sisäheijastukset, laikkumaskit
 src/studio.js              studioympäristö, tausta, varjo
 src/scenery.js             maisemataustat: taivaat, vesi, kivet, kaislat, lehtivarjot
-assets/                    maisemien taivaat ja tekstuurit (Poly Haven, CC0)
+assets/                    maisemien taivaat ja tekstuurit (Poly Haven, CC0) sekä tuotekuvan valokartta
 src/studioEnv.js           rekonstruoitu Ouran studio (48 × 24 säteilyruudukko)
 src/controls.js            kosketus- ja hiiriohjaus
 src/explode.js             räjäytyksen animaatio
